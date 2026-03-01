@@ -1,0 +1,28 @@
+{
+  "title_property": "Activity Title",
+  "draft_property": "Draft",
+  "themes_property": "Themes",
+  "field_property_map": {
+    "Activity Summary": "Activity Summary",
+    "Learning Objectives": "Learning Objectives",
+    "Observation Cues": "Observation Cues",
+    "Linked materials": "Linked materials",
+    "Materials": "Materials",
+    "Step-by-Step Guidance": "Step-by-Step Guidance",
+    "Adult Role": "Adult Role",
+    "Age Adaptation: 0-12 months (Little Learners)": "Age Adaptation: 0-12 months (Little Learners)",
+    "Age Adaptation: 12-24 months (Early Explorers)": "Age Adaptation: 12-24 months (Early Explorers)",
+    "Age Adaptation: 2 years (Budding Adventurers)": "Age Adaptation: 2 years (Budding Adventurers)",
+    "Age Adaptation: 3 years (Curious Investigators)": "Age Adaptation: 3 years (Curious Investigators)",
+    "Age Adaptation: 4 years (Confident Discoverers)": "Age Adaptation: 4 years (Confident Discoverers)",
+    "Space Required": "Space Required",
+    "Time Required": "Time Required",
+    "Safety Considerations": "Safety Considerations",
+    "EYFS (2024) Links with Explanation": "EYFS (2024) Links with Explanation",
+    "Ethos Adaptation: Montessori": "Ethos Adaptation: Montessori",
+    "Ethos Adaptation: Forest School": "Ethos Adaptation: Forest School",
+    "Ethos Adaptation: Reggio Emilia": "Ethos Adaptation: Reggio Emilia",
+    "Ethos Adaptation: Steiner (Waldorf)": "Ethos Adaptation: Steiner (Waldorf)",
+    "Preview content": "Preview content"
+  }
+}

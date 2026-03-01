@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FloPo Activity Writer</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap");
+
+    :root {
+      --bg: #f6f3ea;
+      --paper: #f2f2f2;
+      --ink: #1f2a1f;
+      --accent: #2f6f4f;
+      --muted: #6d746d;
+      --line: #d9d2c2;
+      --border: 1.5px solid #191919;
+    }
+    body { margin: 0; font-family: "Fredoka", "Times New Roman", serif; font-weight: 400; background: linear-gradient(160deg,#f6f3ea,#ece7d7); color: var(--ink); }
+    .wrap { max-width: 1000px; margin: 32px auto; padding: 20px; }
+    .card { box-sizing: border-box; background: var(--paper); border: var(--border); box-shadow: 0px 2px 2px rgba(13, 11, 5, 0.15), inset 0px 2px 0px rgba(255, 255, 255, 0.2), inset 0px -2px 0px rgba(13, 11, 5, 0.15); border-radius: 8px; padding: 20px; }
+    h1, h2, h3, h4, h5, h6 { font-weight: 600; }
+    h1 { margin-top: 0; font-size: 2rem; }
+    label { display:block; margin: 10px 0 6px; font-weight: 600; }
+    textarea, input { width: 100%; box-sizing: border-box; border: var(--border); border-radius: 10px; padding: 10px; font: inherit; background:#fff; }
+    textarea { min-height: 220px; }
+    .btns { display:flex; gap:10px; margin-top:16px; flex-wrap: wrap; }
+    .button, button { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 10px 24px; gap: 8px; border: var(--border); box-shadow: 0px 2px 2px rgba(13, 11, 5, 0.15), inset 0px 4px 0px rgba(255, 255, 255, 0.2), inset 0px -5px 0px rgba(13, 11, 5, 0.15); border-radius: 12px; cursor:pointer; font: inherit; font-weight: 600; }
+    .primary { background: #D2FFFF; color:#203427; }
+    .secondary { background: #F2F2F2; color:#203427; }
+    .mono { white-space: pre-wrap; font-family: Consolas, monospace; font-size: .9rem; background:#f2efe6; border: var(--border); border-radius: 8px; padding: 10px; margin-top:12px; max-height: 300px; overflow:auto; }
+    .sections { margin-top: 14px; border: var(--border); border-radius: 10px; background:#fff; max-height: 520px; overflow:auto; }
+    .section { padding: 12px 14px; border-bottom: 1.5px solid #ece6d8; }
+    .section:last-child { border-bottom: none; }
+    .section h3 { margin: 0 0 8px; font-size: 1rem; }
+    .section p { margin: 0; white-space: pre-wrap; line-height: 1.45; }
+    .muted { color: var(--muted); font-size: .9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>FloPo Activity Writer</h1>
+      <p class="muted">Paste notes, generate a validated draft, then push to Notion and/or Webflow as a draft.</p>
+      <label for="notes">Notes</label>
+      <textarea id="notes" placeholder="Write notes here..."></textarea>
+      <div class="btns">
+        <button class="primary" id="generateBtn">Generate</button>
+        <button class="secondary" id="notionBtn">Push To Notion</button>
+      <!---<button class="secondary" id="combinedPublishBtn">Push To Notion + Webflow</button>-->
+      </div>
+      <div id="status" class="muted" style="margin-top:10px;"></div>
+      <div id="report" class="mono"></div>
+      <div id="sections" class="sections"></div>
+    </div>
+  </div>
+  <script>
+    let latestDraft = null;
+
+    const byId = (id) => document.getElementById(id);
+    function setStatusWithNotionLink(prefix, notionUrl, suffix = "") {
+      const status = byId("status");
+      status.innerHTML = "";
+      status.append(prefix);
+
+      const link = document.createElement("a");
+      link.href = notionUrl;
+      link.textContent = "View here";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      status.appendChild(link);
+
+      if (suffix) {
+        status.append(suffix);
+      }
+    }
+
+    function startGenerationTicker() {
+      let running = true;
+      let tick = 0;
+      let displayedMessage = "Starting generation";
+      const messageQueue = [];
+      let shownAt = Date.now();
+      const minDisplayMs = 3000;
+
+      const drawTimer = setInterval(() => {
+        if (!running) return;
+        if (messageQueue.length && Date.now() - shownAt >= minDisplayMs) {
+          displayedMessage = messageQueue.shift();
+          shownAt = Date.now();
+          tick = 0;
+        }
+        tick = (tick + 1) % 4;
+        byId("status").textContent = `${displayedMessage}${".".repeat(tick)}`;
+      }, 300);
+
+      const pollTimer = setInterval(async () => {
+        if (!running) return;
+        try {
+          const res = await fetch("/api/generation-status", { cache: "no-store" });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.message) {
+            const queuedLast = messageQueue.length ? messageQueue[messageQueue.length - 1] : null;
+            if (data.message !== displayedMessage && data.message !== queuedLast) {
+              messageQueue.push(data.message);
+            }
+          }
+        } catch (_) {
+        }
+      }, 700);
+
+      return () => {
+        running = false;
+        clearInterval(drawTimer);
+        clearInterval(pollTimer);
+      };
+    }
+
+    function renderSections(activityDraft) {
+      const container = byId("sections");
+      container.innerHTML = "";
+      if (!activityDraft) return;
+      Object.entries(activityDraft).forEach(([title, value]) => {
+        const section = document.createElement("section");
+        section.className = "section";
+        const h3 = document.createElement("h3");
+        h3.textContent = title;
+        const p = document.createElement("p");
+        p.textContent = value || "";
+        section.appendChild(h3);
+        section.appendChild(p);
+        container.appendChild(section);
+      });
+    }
+
+    async function callApi(path, payload) {
+      const res = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || JSON.stringify(data));
+      }
+      return data;
+    }
+
+    byId("generateBtn").addEventListener("click", async () => {
+      const stopTicker = startGenerationTicker();
+      try {
+        const payload = {
+          notes: byId("notes").value
+        };
+        const data = await callApi("/api/generate-draft", payload);
+        stopTicker();
+        latestDraft = data.activity_draft;
+        const qcStatus = data.qc_applied ? "passed" : "fail-open";
+        byId("status").textContent = `Generated. Rewrites: ${data.rewrite_count}. Passed: ${data.validation_report.passed}. QC: ${qcStatus}`;
+        byId("report").textContent = JSON.stringify({
+          validation_report: data.validation_report,
+          qc_applied: data.qc_applied,
+          qc_passed: data.qc_passed,
+          qc_edited_fields: data.qc_edited_fields,
+          qc_issues: data.qc_issues,
+          qc_error: data.qc_error
+        }, null, 2);
+        renderSections(data.activity_draft);
+      } catch (err) {
+        stopTicker();
+        byId("status").textContent = "Generation failed.";
+        byId("report").textContent = err.message;
+        byId("sections").innerHTML = "";
+      }
+    });
+
+    byId("notionBtn").addEventListener("click", async () => {
+      if (!latestDraft) return;
+      byId("status").textContent = "Creating Notion draft...";
+      try {
+        const data = await callApi("/api/notion/create-draft", { activity_draft: latestDraft });
+        setStatusWithNotionLink("Notion draft created: ", data.notion_url);
+      } catch (err) {
+        byId("status").textContent = `Notion failed: ${err.message}`;
+      }
+    });
+
+    byId("combinedPublishBtn").addEventListener("click", async () => {
+      if (!latestDraft) return;
+      byId("status").textContent = "Publishing Notion + Webflow draft...";
+      try {
+        const data = await callApi("/api/publish/notion-webflow-draft", { activity_draft: latestDraft });
+        if (data.success) {
+          setStatusWithNotionLink(
+            "Published draft. Notion: ",
+            data.notion.url,
+            ` | Webflow item: ${data.webflow.id}`
+          );
+        } else {
+          const errorText = (data.errors || []).join(" | ");
+          if (data.notion.url) {
+            setStatusWithNotionLink(
+              "Publish failed after partial success. Notion: ",
+              data.notion.url,
+              ` | ${errorText}`
+            );
+          } else {
+            byId("status").textContent = `Publish failed after partial success. Notion: created | ${errorText}`;
+          }
+        }
+      } catch (err) {
+        byId("status").textContent = `Combined publish failed: ${err.message}`;
+      }
+    });
+  </script>
+</body>
+</html>

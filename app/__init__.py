@@ -1,0 +1,2 @@
+"""FloPo Activity Writer package."""
+
