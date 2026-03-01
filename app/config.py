@@ -48,6 +48,14 @@ WEBFLOW_API_BASE_URL = os.getenv("WEBFLOW_API_BASE_URL", "https://api.webflow.co
 WEBFLOW_FIELD_MAP_PATH = PROJECT_DIR / "config" / "webflow_field_map.json"
 NOTION_SKILL_DOCS_CONFIG_PATH = PROJECT_DIR / "config" / "notion_skill_docs.json"
 MAX_REWRITE_ATTEMPTS = int(os.getenv("MAX_REWRITE_ATTEMPTS", "3"))
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+APP_AUTH_USERNAME = os.getenv("APP_AUTH_USERNAME", "").strip()
+APP_AUTH_PASSWORD = os.getenv("APP_AUTH_PASSWORD", "").strip()
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "https://flopo.co.uk").split(",")
+    if origin.strip()
+]
 
 INCLUDED_SKILL_DOCS = [
     "Writing guide.md",

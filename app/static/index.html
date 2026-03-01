@@ -47,7 +47,6 @@
       <div class="btns">
         <button class="primary" id="generateBtn">Generate</button>
         <button class="secondary" id="notionBtn">Push To Notion</button>
-      <!---<button class="secondary" id="combinedPublishBtn">Push To Notion + Webflow</button>-->
       </div>
       <div id="status" class="muted" style="margin-top:10px;"></div>
       <div id="report" class="mono"></div>
@@ -186,33 +185,6 @@
       }
     });
 
-    byId("combinedPublishBtn").addEventListener("click", async () => {
-      if (!latestDraft) return;
-      byId("status").textContent = "Publishing Notion + Webflow draft...";
-      try {
-        const data = await callApi("/api/publish/notion-webflow-draft", { activity_draft: latestDraft });
-        if (data.success) {
-          setStatusWithNotionLink(
-            "Published draft. Notion: ",
-            data.notion.url,
-            ` | Webflow item: ${data.webflow.id}`
-          );
-        } else {
-          const errorText = (data.errors || []).join(" | ");
-          if (data.notion.url) {
-            setStatusWithNotionLink(
-              "Publish failed after partial success. Notion: ",
-              data.notion.url,
-              ` | ${errorText}`
-            );
-          } else {
-            byId("status").textContent = `Publish failed after partial success. Notion: created | ${errorText}`;
-          }
-        }
-      } catch (err) {
-        byId("status").textContent = `Combined publish failed: ${err.message}`;
-      }
-    });
   </script>
 </body>
 </html>

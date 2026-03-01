@@ -189,7 +189,6 @@ def test_generate_draft_endpoint_returns_qc_metadata(monkeypatch):
 
     monkeypatch.setattr(main, "content_fields_from_csv", lambda: mock_fields)
     monkeypatch.setattr(main, "validate_notion_configuration", lambda: (True, "Notion ready"))
-    monkeypatch.setattr(main, "validate_webflow_configuration", lambda: (True, "Webflow ready"))
     monkeypatch.setattr(
         main,
         "generate_activity_draft",

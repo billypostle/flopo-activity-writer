@@ -35,15 +35,6 @@ class GenerateDraftResponse(BaseModel):
     qc_error: str = ""
 
 
-class SaveLocalRequest(BaseModel):
-    activity_draft: dict[str, str]
-
-
-class SaveLocalResponse(BaseModel):
-    saved_path: str
-    slug: str
-
-
 class NotionCreateDraftRequest(BaseModel):
     activity_draft: dict[str, str]
 
@@ -53,29 +44,3 @@ class NotionCreateDraftResponse(BaseModel):
     notion_url: str
     draft_property: str
     draft_value: Any
-
-
-class CombinedPublishRequest(BaseModel):
-    activity_draft: dict[str, str]
-
-
-class CombinedPublishNotionResult(BaseModel):
-    id: str = ""
-    url: str = ""
-    created: bool = False
-
-
-class CombinedPublishWebflowResult(BaseModel):
-    id: str = ""
-    collection_id: str = ""
-    cms_locale_ids: list[str] = Field(default_factory=list)
-    is_draft: bool = True
-    is_archived: bool = False
-    created: bool = False
-
-
-class CombinedPublishResponse(BaseModel):
-    success: bool
-    notion: CombinedPublishNotionResult
-    webflow: CombinedPublishWebflowResult
-    errors: list[str] = Field(default_factory=list)

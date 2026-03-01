@@ -1,13 +1,19 @@
 # FloPo Activity Writer
 
-Local-first web app for generating FloPo activity drafts with OpenAI, validating against writing rules, saving markdown locally, and creating Notion drafts.
+Web-based app for generating FloPo activity drafts with OpenAI, validating against writing rules, and creating Notion drafts.
 
 ## What it does
 - `POST /api/generate-draft`: generate + validate + auto-rewrite (up to 3 attempts), then run an always-on QC editor pass that can patch only failing sections.
-- `POST /api/save-local`: save markdown to `C:\Users\billy\Documents\FloPo\Activities`.
 - `POST /api/notion/create-draft`: create draft entry in your Notion database.
-- `POST /api/publish/notion-webflow-draft`: create Notion draft, then create Webflow CMS draft (all-or-error with partial-result details).
 - `GET /api/resources`: exposes parsed themes/materials/age bands/EYFS + CSV-driven field list.
+- `GET /api/generation-status`: live status updates for long-running draft generation.
+- `GET /healthz`: unauthenticated health check.
+
+## Security model
+- App-level HTTP Basic auth protects all routes except `/healthz`.
+- CORS allowlist is controlled by `ALLOWED_ORIGINS`.
+- Security headers include CSP `frame-ancestors` for Webflow iframe embedding.
+- In `ENVIRONMENT=production`, FastAPI docs/openapi endpoints are disabled.
 
 ## Core writing context (mandatory)
 - Runtime generation uses one authoritative Model Spec page in Notion.
@@ -22,14 +28,15 @@ Local-first web app for generating FloPo activity drafts with OpenAI, validating
 
 ## Project layout
 - `app/main.py`: FastAPI app and endpoints
-- `app/generator.py`: OpenAI generation + rewrite loop
+- `app/generator.py`: OpenAI generation + rewrite + QC loop
 - `app/validators.py`: deterministic QA checks
 - `app/notion_client.py`: Notion page creation
-- `app/webflow_client.py`: Webflow CMS staged draft creation
-- `app/markdown_writer.py`: markdown rendering + save logic
+- `app/markdown_writer.py`: markdown rendering helpers
 - `app/resources.py`: skill docs and CSV parsers
-- `app/static/index.html`: local UI
-- `tests/`: parser/validator/save tests
+- `app/static/index.html`: web UI
+- `api/index.py`: Vercel Python function entrypoint
+- `vercel.json`: Vercel routing/build config
+- `tests/`: test suite
 
 ## Prerequisites
 - Python 3.10+
@@ -51,60 +58,38 @@ Local-first web app for generating FloPo activity drafts with OpenAI, validating
    - `FLOPO_MODEL_SPEC_REFRESH_SECONDS` (default `3600`)
    - `NOTION_SKILL_DOCS_MODE` (`local`, `live`, or `live_with_fallback`; default `live_with_fallback`)
    - `NOTION_SKILL_DOCS_REQUEST_TIMEOUT_SECONDS` (default `30`)
-   - `WEBFLOW_API_TOKEN` (needs `CMS:write` scope)
-   - `WEBFLOW_COLLECTION_ID` (optional if CSV defaults are present)
-   - `WEBFLOW_CMS_LOCALE_IDS` (optional comma-separated list; optional if CSV default is present)
-   - `WEBFLOW_API_BASE_URL` (default `https://api.webflow.com`)
+   - `ENVIRONMENT` (`development` or `production`)
+   - `APP_AUTH_USERNAME`
+   - `APP_AUTH_PASSWORD`
+   - `ALLOWED_ORIGINS` (comma-separated; default `https://flopo.co.uk`)
 4. (Optional) Copy `config/notion_field_map.example.json` to `config/notion_field_map.json` and adjust property mapping.
 5. (Optional) Copy `config/notion_skill_docs.example.json` to `config/notion_skill_docs.json` and map each skill doc filename to a Notion page URL/ID.
-6. (Optional) Copy `config/webflow_field_map.example.json` to `config/webflow_field_map.json` and adjust Webflow field slugs.
 
-## Run
+## Local run
 - `uvicorn app.main:app --reload`
 - Open `http://127.0.0.1:8000`
 
-## One-click launch (Windows)
-- Double-click [Launch_FloPo_Activity_Writer.bat](C:\Users\billy\Documents\FloPo\Tools\Activity_Writer\Launch_FloPo_Activity_Writer.bat)
-- It will:
-  - start the server if it is not already running
-  - open `http://127.0.0.1:8000` in your browser
-
-Repo-root shortcuts are also available:
-- [Open_FloPo_Activity_Writer.bat](C:\Users\billy\Documents\FloPo\Open_FloPo_Activity_Writer.bat)
-- [Stop_FloPo_Activity_Writer.bat](C:\Users\billy\Documents\FloPo\Stop_FloPo_Activity_Writer.bat)
-
-To stop the server, double-click:
-- [Stop_FloPo_Activity_Writer.bat](C:\Users\billy\Documents\FloPo\Tools\Activity_Writer\Stop_FloPo_Activity_Writer.bat)
+## Vercel deployment
+1. Create a Vercel project with root directory set to `Tools/Activity_Writer`.
+2. Ensure Vercel uses the included `vercel.json` and `api/index.py`.
+3. Add all required environment variables in the Vercel dashboard.
+4. Deploy and note your `*.vercel.app` URL.
+5. Embed that URL in your Webflow password-protected page via iframe.
 
 ## Notion integration setup
 1. Create a Notion internal integration.
 2. Share the target database with that integration.
 3. Set `NOTION_API_KEY` and `NOTION_DATABASE_ID` in `.env`.
 4. If property names differ, update `config/notion_field_map.json`.
-5. Draft status is not set automatically; manage it manually in Notion.
 
 At app startup, Notion config is verified against `GET /v1/databases/{NOTION_DATABASE_ID}`.
 If verification fails, `/api/notion/create-draft` returns a clear startup verification error.
 
-## Webflow integration setup
-1. Create a Webflow API token with `CMS:write`.
-2. Set `WEBFLOW_API_TOKEN` in `.env`.
-3. Set `WEBFLOW_COLLECTION_ID` and `WEBFLOW_CMS_LOCALE_IDS`, or allow CSV defaults from `Collection ID` and `Locale ID`.
-4. Update `config/webflow_field_map.json` with your collection's field slugs.
-5. Use `POST /api/publish/notion-webflow-draft` to create both drafts in sequence.
-
-If Notion succeeds and Webflow fails, the endpoint returns `success=false` and includes the created Notion page details in the response.
-
 ## Testing
-- `pytest`
+- `python -m pytest`
 
 ## Notes
 - Content fields are derived from `Databases/FloPo - Activities - 698734a9856055bb42014e7a (1).csv`.
-- Themes, age adaptations, materials, and context are inferred by the model from notes + guidance docs (no manual guided selectors in UI).
-- Visual style guide and strategic grounding docs are intentionally excluded from generation context.
-- Skill docs can still be loaded live from Notion for admin/debug tooling via `NOTION_SKILL_DOCS_MODE`:
-  - `local`: use local files only from `Skill docs/`.
-  - `live`: use Notion-only for all included skill docs; every doc must be mapped in `config/notion_skill_docs.json`.
-  - `live_with_fallback`: attempt Notion first for mapped docs, then fall back to local files.
-- `/api/generate-draft` no longer injects multi-doc skill guides at runtime; it injects only the Model Spec.
+- Themes, age adaptations, materials, and context are inferred by the model from notes + guidance docs.
+- `/api/generate-draft` injects only the Model Spec at runtime (not multi-doc skill guide context).
 - QC pass fail-open behavior: if the second-pass QC call fails (request/parse/schema), the API returns the first-pass draft with QC metadata (`qc_applied=false`, `qc_error` populated).

@@ -1,38 +1,58 @@
 from __future__ import annotations
 
-from pathlib import Path
+import binascii
 import logging
+from base64 import b64decode
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
+from secrets import compare_digest
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import config
 from .generator import generate_activity_draft
-from .markdown_writer import build_markdown, save_markdown_to_activities
+from .markdown_writer import build_markdown
 from .models import (
-    CombinedPublishRequest,
-    CombinedPublishResponse,
     GenerateDraftRequest,
     GenerateDraftResponse,
-    CombinedPublishNotionResult,
-    CombinedPublishWebflowResult,
     NotionCreateDraftRequest,
     NotionCreateDraftResponse,
-    SaveLocalRequest,
-    SaveLocalResponse,
 )
 from .notion_client import create_notion_draft, validate_notion_configuration
 from .resources import content_fields_from_csv, load_resources_payload
-from .webflow_client import create_webflow_draft, validate_webflow_configuration
 
-app = FastAPI(title="FloPo Activity Writer", version="0.1.0")
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _set_generation_status(app, "Idle", active=False)
+    ok, message = validate_notion_configuration()
+    app.state.notion_ready = ok
+    app.state.notion_status_message = message
+    if ok:
+        logger.info("Notion startup verification passed.")
+    else:
+        logger.warning("Notion startup verification failed: %s", message)
+    yield
+
+
+app = FastAPI(
+    title="FloPo Activity Writer",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None if config.ENVIRONMENT == "production" else "/docs",
+    redoc_url=None if config.ENVIRONMENT == "production" else "/redoc",
+    openapi_url=None if config.ENVIRONMENT == "production" else "/openapi.json",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,32 +62,71 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-def _set_generation_status(message: str, *, active: bool) -> None:
-    app.state.generation_status = {
+def _set_generation_status(app_obj: FastAPI, message: str, *, active: bool) -> None:
+    app_obj.state.generation_status = {
         "active": active,
         "message": message,
         "updated_at_utc": datetime.now(timezone.utc).isoformat(),
     }
 
 
-@app.on_event("startup")
-def startup_validate_notion() -> None:
-    _set_generation_status("Idle", active=False)
-    ok, message = validate_notion_configuration()
-    app.state.notion_ready = ok
-    app.state.notion_status_message = message
-    if ok:
-        logger.info("Notion startup verification passed.")
-    else:
-        logger.warning("Notion startup verification failed: %s", message)
+def _auth_error() -> JSONResponse:
+    return JSONResponse(
+        status_code=401,
+        content={"detail": "Authentication required."},
+        headers={"WWW-Authenticate": 'Basic realm="FloPo Activity Writer"'},
+    )
 
-    webflow_ok, webflow_message = validate_webflow_configuration()
-    app.state.webflow_ready = webflow_ok
-    app.state.webflow_status_message = webflow_message
-    if webflow_ok:
-        logger.info("Webflow startup verification passed.")
-    else:
-        logger.warning("Webflow startup verification failed: %s", webflow_message)
+
+def _is_authenticated(request: Request) -> bool:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Basic "):
+        return False
+
+    encoded = auth_header[6:].strip()
+    try:
+        decoded = b64decode(encoded).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+
+    if ":" not in decoded:
+        return False
+
+    username, password = decoded.split(":", 1)
+    return compare_digest(username, config.APP_AUTH_USERNAME) and compare_digest(
+        password, config.APP_AUTH_PASSWORD
+    )
+
+
+@app.middleware("http")
+async def security_and_auth_middleware(request: Request, call_next):
+    path = request.url.path
+    is_health = path == "/healthz"
+    is_preflight = request.method.upper() == "OPTIONS"
+
+    if not is_health and not is_preflight:
+        creds_configured = bool(config.APP_AUTH_USERNAME and config.APP_AUTH_PASSWORD)
+        if config.ENVIRONMENT == "production" and not creds_configured:
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "APP_AUTH_USERNAME and APP_AUTH_PASSWORD must be configured."},
+            )
+
+        if creds_configured and not _is_authenticated(request):
+            return _auth_error()
+
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = (
+        "frame-ancestors https://flopo.co.uk https://*.flopo.co.uk"
+    )
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
+@app.get("/healthz")
+def healthz() -> dict:
+    return {"ok": True}
 
 
 @app.get("/")
@@ -85,16 +144,20 @@ def get_generation_status() -> dict:
     return getattr(
         app.state,
         "generation_status",
-        {"active": False, "message": "Idle", "updated_at_utc": datetime.now(timezone.utc).isoformat()},
+        {
+            "active": False,
+            "message": "Idle",
+            "updated_at_utc": datetime.now(timezone.utc).isoformat(),
+        },
     )
 
 
 @app.post("/api/generate-draft", response_model=GenerateDraftResponse)
 def post_generate_draft(payload: GenerateDraftRequest) -> GenerateDraftResponse:
     def update_status(message: str) -> None:
-        _set_generation_status(message, active=True)
+        _set_generation_status(app, message, active=True)
 
-    _set_generation_status("Starting generation", active=True)
+    _set_generation_status(app, "Starting generation", active=True)
     try:
         content_fields = content_fields_from_csv()
         update_status("Loading content field definitions")
@@ -104,9 +167,9 @@ def post_generate_draft(payload: GenerateDraftRequest) -> GenerateDraftResponse:
         update_status("Building markdown preview")
         markdown_preview = build_markdown(draft, content_fields)
     except Exception as exc:
-        _set_generation_status(f"Generation failed: {exc}", active=False)
+        _set_generation_status(app, f"Generation failed: {exc}", active=False)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    _set_generation_status("Generation complete", active=False)
+    _set_generation_status(app, "Generation complete", active=False)
 
     return GenerateDraftResponse(
         activity_draft=draft,
@@ -119,16 +182,6 @@ def post_generate_draft(payload: GenerateDraftRequest) -> GenerateDraftResponse:
         qc_issues=qc_report.issues,
         qc_error=qc_report.error,
     )
-
-
-@app.post("/api/save-local", response_model=SaveLocalResponse)
-def post_save_local(payload: SaveLocalRequest) -> SaveLocalResponse:
-    try:
-        content_fields = content_fields_from_csv()
-        path, slug = save_markdown_to_activities(payload.activity_draft, content_fields)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return SaveLocalResponse(saved_path=str(path), slug=slug)
 
 
 @app.post("/api/notion/create-draft", response_model=NotionCreateDraftResponse)
@@ -146,52 +199,4 @@ def post_notion_create_draft(payload: NotionCreateDraftRequest) -> NotionCreateD
         notion_url=notion_page.get("url", ""),
         draft_property="",
         draft_value=None,
-    )
-
-
-@app.post("/api/publish/notion-webflow-draft", response_model=CombinedPublishResponse)
-def post_publish_notion_webflow_draft(payload: CombinedPublishRequest) -> CombinedPublishResponse:
-    if not getattr(app.state, "notion_ready", False):
-        detail = getattr(app.state, "notion_status_message", "Notion is not configured.")
-        raise HTTPException(status_code=400, detail=f"Notion startup verification failed: {detail}")
-    if not getattr(app.state, "webflow_ready", False):
-        detail = getattr(app.state, "webflow_status_message", "Webflow is not configured.")
-        raise HTTPException(status_code=400, detail=f"Webflow startup verification failed: {detail}")
-
-    notion_result = CombinedPublishNotionResult()
-    webflow_result = CombinedPublishWebflowResult()
-
-    try:
-        notion_page = create_notion_draft(payload.activity_draft)
-        notion_result = CombinedPublishNotionResult(
-            id=str(notion_page.get("id", "")),
-            url=str(notion_page.get("url", "")),
-            created=True,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Notion draft creation failed: {exc}") from exc
-
-    try:
-        webflow_item = create_webflow_draft(payload.activity_draft)
-        webflow_result = CombinedPublishWebflowResult(
-            id=str(webflow_item.get("id", "")),
-            collection_id=str(webflow_item.get("collection_id", "")),
-            cms_locale_ids=list(webflow_item.get("cms_locale_ids", [])),
-            is_draft=bool(webflow_item.get("is_draft", True)),
-            is_archived=bool(webflow_item.get("is_archived", False)),
-            created=bool(webflow_item.get("created", False)),
-        )
-    except Exception as exc:
-        return CombinedPublishResponse(
-            success=False,
-            notion=notion_result,
-            webflow=webflow_result,
-            errors=[f"Webflow draft creation failed after Notion success: {exc}"],
-        )
-
-    return CombinedPublishResponse(
-        success=True,
-        notion=notion_result,
-        webflow=webflow_result,
-        errors=[],
     )
