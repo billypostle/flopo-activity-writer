@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
@@ -124,11 +125,29 @@ default_environment = "production" if os.getenv("VERCEL_ENV", "").strip().lower(
 ENVIRONMENT = os.getenv("ENVIRONMENT", default_environment).strip().lower()
 APP_AUTH_USERNAME = os.getenv("APP_AUTH_USERNAME", "").strip()
 APP_AUTH_PASSWORD = os.getenv("APP_AUTH_PASSWORD", "").strip()
-ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("ALLOWED_ORIGINS", "https://flopo.co.uk").split(",")
-    if origin.strip()
-]
+def _normalize_origin(value: str) -> str:
+    parsed = urlparse(value.strip())
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return ""
+    if not parsed.netloc:
+        return ""
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
+def _parse_allowed_origins(raw: str) -> list[str]:
+    origins: list[str] = []
+    for candidate in raw.split(","):
+        origin = _normalize_origin(candidate)
+        if origin and origin not in origins:
+            origins.append(origin)
+    return origins
+
+
+ALLOWED_ORIGINS = _parse_allowed_origins(
+    os.getenv("ALLOWED_ORIGINS", "https://flopo.co.uk,https://flopo-stage.webflow.io")
+)
+FRAME_ANCESTORS = ALLOWED_ORIGINS or ["'none'"]
+CONTENT_SECURITY_POLICY = f"frame-ancestors {' '.join(FRAME_ANCESTORS)}"
 
 INCLUDED_SKILL_DOCS = [
     "Writing guide.md",

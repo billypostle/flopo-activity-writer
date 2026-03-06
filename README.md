@@ -61,7 +61,7 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
    - `ENVIRONMENT` (`development` or `production`)
    - `APP_AUTH_USERNAME`
    - `APP_AUTH_PASSWORD`
-   - `ALLOWED_ORIGINS` (comma-separated; default `https://flopo.co.uk`)
+   - `ALLOWED_ORIGINS` (comma-separated; default `https://flopo.co.uk,https://flopo-stage.webflow.io`)
 4. (Optional) Copy `config/notion_field_map.example.json` to `config/notion_field_map.json` and adjust property mapping.
 5. (Optional) Copy `config/notion_skill_docs.example.json` to `config/notion_skill_docs.json` and map each skill doc filename to a Notion page URL/ID.
 

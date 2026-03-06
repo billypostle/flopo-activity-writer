@@ -116,9 +116,7 @@ async def security_and_auth_middleware(request: Request, call_next):
             return _auth_error()
 
     response = await call_next(request)
-    response.headers["Content-Security-Policy"] = (
-        "frame-ancestors https://flopo.co.uk https://*.flopo.co.uk"
-    )
+    response.headers["Content-Security-Policy"] = config.CONTENT_SECURITY_POLICY
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response

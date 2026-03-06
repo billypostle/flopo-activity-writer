@@ -38,3 +38,10 @@ def test_resolve_model_spec_cache_path_uses_tmp_on_vercel(monkeypatch, tmp_path:
 
     resolved = config._resolve_model_spec_cache_path()
     assert resolved == Path(tempfile.gettempdir()) / "model_spec.json"
+
+
+def test_parse_allowed_origins_normalizes_and_deduplicates() -> None:
+    parsed = config._parse_allowed_origins(
+        "https://flopo.co.uk, https://flopo-stage.webflow.io/writer, https://flopo-stage.webflow.io"
+    )
+    assert parsed == ["https://flopo.co.uk", "https://flopo-stage.webflow.io"]

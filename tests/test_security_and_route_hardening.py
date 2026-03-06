@@ -68,12 +68,18 @@ def test_security_headers_set(monkeypatch):
     monkeypatch.setattr(main, "validate_notion_configuration", lambda: (True, "Notion ready"))
     monkeypatch.setattr(main.config, "APP_AUTH_USERNAME", "")
     monkeypatch.setattr(main.config, "APP_AUTH_PASSWORD", "")
+    monkeypatch.setattr(
+        main.config,
+        "CONTENT_SECURITY_POLICY",
+        "frame-ancestors https://flopo.co.uk https://flopo-stage.webflow.io",
+    )
 
     with TestClient(main.app) as client:
         response = client.get("/healthz")
 
-    assert "frame-ancestors https://flopo.co.uk https://*.flopo.co.uk" in response.headers[
-        "content-security-policy"
-    ]
+    assert (
+        response.headers["content-security-policy"]
+        == "frame-ancestors https://flopo.co.uk https://flopo-stage.webflow.io"
+    )
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
