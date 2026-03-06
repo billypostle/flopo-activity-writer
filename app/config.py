@@ -16,6 +16,25 @@ def _first_existing_path(candidates: list[Path]) -> Path:
     return candidates[0]
 
 
+def _looks_like_flopo_repo(path: Path) -> bool:
+    return (path / "Databases").exists() and (path / "Skill docs").exists()
+
+
+def _resolve_repo_root(candidates: list[Path], fallback: Path) -> Path:
+    existing: list[Path] = []
+    for candidate in candidates:
+        if candidate.exists() and candidate not in existing:
+            existing.append(candidate)
+
+    for candidate in existing:
+        if _looks_like_flopo_repo(candidate):
+            return candidate
+
+    if fallback.exists():
+        return fallback
+    return _first_existing_path(candidates)
+
+
 explicit_repo_root = os.getenv("FLOPO_REPO_ROOT", "").strip()
 repo_root_candidates: list[Path] = []
 if explicit_repo_root:
@@ -27,7 +46,7 @@ repo_root_candidates.extend(
         PROJECT_DIR,  # Vercel root-dir deployment
     ]
 )
-REPO_ROOT = _first_existing_path(repo_root_candidates)
+REPO_ROOT = _resolve_repo_root(repo_root_candidates, fallback=PROJECT_DIR)
 
 # Always load this project's .env, regardless of process working directory.
 load_dotenv(dotenv_path=PROJECT_DIR / ".env", override=True)
