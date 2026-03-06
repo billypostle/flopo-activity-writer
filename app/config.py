@@ -7,7 +7,27 @@ from dotenv import load_dotenv
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = APP_DIR.parent
-REPO_ROOT = PROJECT_DIR.parent.parent
+
+
+def _first_existing_path(candidates: list[Path]) -> Path:
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+explicit_repo_root = os.getenv("FLOPO_REPO_ROOT", "").strip()
+repo_root_candidates: list[Path] = []
+if explicit_repo_root:
+    repo_root_candidates.append(Path(explicit_repo_root).expanduser())
+repo_root_candidates.extend(
+    [
+        PROJECT_DIR.parent.parent,  # local monorepo layout
+        PROJECT_DIR.parent,  # alternate local layout
+        PROJECT_DIR,  # Vercel root-dir deployment
+    ]
+)
+REPO_ROOT = _first_existing_path(repo_root_candidates)
 
 # Always load this project's .env, regardless of process working directory.
 load_dotenv(dotenv_path=PROJECT_DIR / ".env", override=True)
@@ -16,8 +36,17 @@ SKILL_DOCS_DIR = REPO_ROOT / "Skill docs"
 DATABASES_DIR = REPO_ROOT / "Databases"
 ACTIVITIES_OUTPUT_DIR = REPO_ROOT / "Activities"
 
-ACTIVITIES_CSV_PATH = DATABASES_DIR / "FloPo - Activities - 698734a9856055bb42014e7a (1).csv"
-THEMES_CSV_PATH = DATABASES_DIR / "webflow_themes_import.csv"
+activities_csv_candidates = [
+    PROJECT_DIR / "config" / "activities_fields.csv",  # bundled for hosted deploys
+    DATABASES_DIR / "FloPo - Activities - 698734a9856055bb42014e7a (1).csv",  # local monorepo
+]
+themes_csv_candidates = [
+    PROJECT_DIR / "config" / "webflow_themes_import.csv",  # optional bundled copy
+    DATABASES_DIR / "webflow_themes_import.csv",  # local monorepo
+]
+
+ACTIVITIES_CSV_PATH = _first_existing_path(activities_csv_candidates)
+THEMES_CSV_PATH = _first_existing_path(themes_csv_candidates)
 NOTION_FIELD_MAP_PATH = PROJECT_DIR / "config" / "notion_field_map.json"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip().strip("\"'")
@@ -48,7 +77,8 @@ WEBFLOW_API_BASE_URL = os.getenv("WEBFLOW_API_BASE_URL", "https://api.webflow.co
 WEBFLOW_FIELD_MAP_PATH = PROJECT_DIR / "config" / "webflow_field_map.json"
 NOTION_SKILL_DOCS_CONFIG_PATH = PROJECT_DIR / "config" / "notion_skill_docs.json"
 MAX_REWRITE_ATTEMPTS = int(os.getenv("MAX_REWRITE_ATTEMPTS", "3"))
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+default_environment = "production" if os.getenv("VERCEL_ENV", "").strip().lower() == "production" else "development"
+ENVIRONMENT = os.getenv("ENVIRONMENT", default_environment).strip().lower()
 APP_AUTH_USERNAME = os.getenv("APP_AUTH_USERNAME", "").strip()
 APP_AUTH_PASSWORD = os.getenv("APP_AUTH_PASSWORD", "").strip()
 ALLOWED_ORIGINS = [
