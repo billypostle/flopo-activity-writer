@@ -40,8 +40,15 @@ def load_cached_spec(path: Path | None = None) -> dict[str, Any] | None:
 
 def save_cached_spec(payload: dict[str, Any], path: Path | None = None) -> None:
     cache_path = path or FLOPO_MODEL_SPEC_CACHE_PATH
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as exc:
+        logger.warning(
+            "Unable to write model spec cache at %s; continuing without cache. Error: %s",
+            cache_path,
+            exc,
+        )
 
 
 def _is_cache_fresh(payload: dict[str, Any], refresh_seconds: int) -> bool:

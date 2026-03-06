@@ -67,3 +67,23 @@ def test_get_model_spec_warns_on_hash_drift(monkeypatch, tmp_path: Path, caplog)
     payload = spec_manager.get_model_spec()
     assert payload["spec_hash"] == spec_manager.hash_text("new spec")
     assert "Model spec content changed; bump FLOPO_MODEL_SPEC_VERSION" in caplog.text
+
+
+def test_get_model_spec_continues_when_cache_write_fails(monkeypatch, tmp_path: Path, caplog):
+    cache_path = tmp_path / "model_spec.json"
+    source_url = "https://www.notion.so/spec"
+
+    monkeypatch.setattr(spec_manager, "FLOPO_MODEL_SPEC_URL", source_url)
+    monkeypatch.setattr(spec_manager, "FLOPO_MODEL_SPEC_VERSION", "1.0.0")
+    monkeypatch.setattr(spec_manager, "FLOPO_MODEL_SPEC_CACHE_PATH", cache_path)
+    monkeypatch.setattr(spec_manager, "FLOPO_MODEL_SPEC_REFRESH_SECONDS", 3600)
+    monkeypatch.setattr(spec_manager, "fetch_notion_page_markdown", lambda _ref: "fresh spec")
+
+    def _raise_read_only(*_args, **_kwargs):
+        raise OSError(30, "Read-only file system")
+
+    monkeypatch.setattr(spec_manager.Path, "write_text", _raise_read_only)
+
+    payload = spec_manager.get_model_spec()
+    assert payload["spec_text"] == "fresh spec"
+    assert "Unable to write model spec cache" in caplog.text

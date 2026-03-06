@@ -1,5 +1,7 @@
+import tempfile
 from pathlib import Path
 
+from app import config
 from app.config import _resolve_repo_root
 
 
@@ -28,3 +30,11 @@ def test_resolve_repo_root_falls_back_to_project_dir(tmp_path: Path) -> None:
     resolved = _resolve_repo_root([generic], fallback=fallback)
     assert resolved == fallback
 
+
+def test_resolve_model_spec_cache_path_uses_tmp_on_vercel(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(config, "PROJECT_DIR", Path("C:/vercel/path0"))
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("FLOPO_MODEL_SPEC_CACHE_PATH", ".cache/model_spec.json")
+
+    resolved = config._resolve_model_spec_cache_path()
+    assert resolved == Path(tempfile.gettempdir()) / "model_spec.json"

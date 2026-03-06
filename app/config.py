@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -81,9 +82,32 @@ NOTION_SKILL_DOCS_REQUEST_TIMEOUT_SECONDS = int(
 )
 FLOPO_MODEL_SPEC_URL = os.getenv("FLOPO_MODEL_SPEC_URL", "").strip().strip("\"'")
 FLOPO_MODEL_SPEC_VERSION = os.getenv("FLOPO_MODEL_SPEC_VERSION", "1.0.0").strip()
-FLOPO_MODEL_SPEC_CACHE_PATH = Path(
-    os.getenv("FLOPO_MODEL_SPEC_CACHE_PATH", str(PROJECT_DIR / ".cache" / "model_spec.json"))
-)
+
+
+def _is_within_dir(path: Path, root: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(root.resolve(strict=False))
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_model_spec_cache_path() -> Path:
+    default_path = PROJECT_DIR / ".cache" / "model_spec.json"
+    configured = os.getenv("FLOPO_MODEL_SPEC_CACHE_PATH", "").strip()
+    cache_path = Path(configured).expanduser() if configured else default_path
+    if not cache_path.is_absolute():
+        cache_path = PROJECT_DIR / cache_path
+
+    if os.getenv("VERCEL", "").strip() and not _is_within_dir(
+        cache_path, Path(tempfile.gettempdir())
+    ):
+        cache_path = Path(tempfile.gettempdir()) / cache_path.name
+
+    return cache_path
+
+
+FLOPO_MODEL_SPEC_CACHE_PATH = _resolve_model_spec_cache_path()
 FLOPO_MODEL_SPEC_REFRESH_SECONDS = int(os.getenv("FLOPO_MODEL_SPEC_REFRESH_SECONDS", "3600"))
 WEBFLOW_API_TOKEN = os.getenv("WEBFLOW_API_TOKEN", "").strip().strip("\"'")
 WEBFLOW_COLLECTION_ID = os.getenv("WEBFLOW_COLLECTION_ID", "").strip().strip("\"'")
