@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FloPo Image Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f2f0ec;
+    --surface: #ffffff;
+    --border: #e8e4de;
+    --text: #252320;
+    --text-muted: #9a958e;
+    --text-light: #c5c0b8;
+    --accent: #3d6b7e;
+    --warn: #b45309;
+    --warn-light: #fef3e2;
+    --pass: #1a7340;
+    --pass-light: #e8f5ee;
+    --fail: #b91c1c;
+    --fail-light: #fef2f2;
+    --pending-light: #f3f4f6;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 28px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+
+  /* Header */
+  .app-header { text-align: center; }
+  .app-header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+  .app-header p  { font-size: 0.76rem; color: var(--text-muted); margin-top: 3px; }
+
+  /* Generic card */
+  .card {
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
+    padding: 20px 24px;
+    width: 100%;
+    max-width: 1200px;
+  }
+  .card-title {
+    font-size: 0.67rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em;
+    color: var(--text-light); margin-bottom: 12px;
+  }
+
+  /* API key */
+  .api-row { display: flex; gap: 10px; align-items: center; }
+  .api-row input {
+    flex: 1; padding: 9px 13px;
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 0.85rem; font-family: 'SF Mono','Fira Mono',monospace;
+    color: var(--text); background: var(--bg); outline: none;
+    transition: border-color 0.2s;
+  }
+  .api-row input:focus { border-color: var(--accent); }
+  .api-note { font-size: 0.7rem; color: var(--text-light); margin-top: 7px; line-height: 1.5; }
+
+  /* Toggles */
+  .controls-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+  @media (max-width: 800px) { .controls-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 500px) { .controls-grid { grid-template-columns: 1fr; } }
+
+  .control-group { display: flex; flex-direction: column; gap: 7px; }
+  .control-group-label {
+    font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted);
+  }
+  .toggle-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .toggle {
+    padding: 5px 11px; border-radius: 20px;
+    font-size: 0.75rem; font-weight: 600;
+    cursor: pointer; border: 1.5px solid var(--border);
+    background: var(--bg); color: var(--text-muted);
+    transition: all 0.15s; user-select: none;
+  }
+  .toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .toggle.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+  /* Activity fields */
+  .activity-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  @media (max-width: 600px) { .activity-row { grid-template-columns: 1fr; } }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted);
+  }
+  .field textarea {
+    padding: 8px 11px;
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 0.83rem; font-family: inherit;
+    color: var(--text); background: var(--bg);
+    outline: none; resize: none; min-height: 64px; line-height: 1.5;
+    transition: border-color 0.2s;
+  }
+  .field textarea:focus { border-color: var(--accent); }
+  .field textarea.field-error { border-color: var(--fail); background: var(--fail-light); }
+  .field-required { color: var(--fail); margin-left: 2px; }
+  .field-error-msg { font-size: 0.67rem; color: var(--fail); margin-top: 3px; display: none; }
+  .field-error-msg.visible { display: block; }
+
+  /* Generate button */
+  .generate-btn {
+    width: 100%; margin-top: 14px; padding: 12px;
+    background: var(--accent); color: white; border: none;
+    border-radius: var(--radius-sm); font-size: 0.9rem; font-weight: 700;
+    cursor: pointer; transition: opacity 0.15s, transform 0.1s;
+  }
+  .generate-btn:hover:not(:disabled) { opacity: 0.88; }
+  .generate-btn:active:not(:disabled) { transform: scale(0.99); }
+  .generate-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* Error banner */
+  #error-msg {
+    display: none; font-size: 0.8rem; color: var(--fail);
+    background: var(--fail-light); border: 1px solid #fecaca;
+    padding: 9px 13px; border-radius: var(--radius-sm);
+    line-height: 1.5; margin-bottom: 10px;
+  }
+
+  /* ── REVIEW PANEL ─────────────────────────── */
+  .review-card {
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
+    width: 100%; max-width: 1200px;
+    display: grid;
+    grid-template-columns: 1fr 370px;
+    overflow: hidden;
+  }
+  @media (max-width: 900px) { .review-card { grid-template-columns: 1fr; } }
+
+  /* Left – image column */
+  .image-col {
+    display: flex; flex-direction: column;
+    padding: 20px 20px 20px 24px; gap: 12px;
+    border-right: 1px solid var(--border);
+  }
+  @media (max-width: 900px) { .image-col { border-right: none; border-bottom: 1px solid var(--border); } }
+
+  .col-label {
+    font-size: 0.67rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-light);
+  }
+
+  #image-area {
+    width: 100%; aspect-ratio: 16/9;
+    border-radius: var(--radius); background: var(--bg);
+    border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; flex-shrink: 0;
+  }
+  #image-area img {
+    width: 100%; height: 100%; object-fit: cover;
+    border-radius: calc(var(--radius) - 2px); display: block;
+  }
+  .img-placeholder {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px; color: var(--text-light); text-align: center; padding: 24px;
+  }
+  .img-placeholder p { font-size: 0.8rem; line-height: 1.5; }
+  .img-placeholder svg { opacity: 0.35; }
+
+  .spinner-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .spinner {
+    width: 34px; height: 34px;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-wrap p { font-size: 0.8rem; color: var(--text-muted); }
+
+  #feedback-banner {
+    display: none; font-size: 0.72rem; color: var(--accent);
+    background: #eaf2f5; border: 1px solid #b3d4df;
+    padding: 7px 11px; border-radius: var(--radius-sm); line-height: 1.5;
+  }
+
+  .image-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: var(--radius-sm);
+    font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; border: 1.5px solid var(--border);
+    background: var(--bg); color: var(--text-muted);
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Right – QC column */
+  .qc-col {
+    display: flex; flex-direction: column;
+    /* total height matches image col; QC scrolls inside */
+    max-height: 100%;
+  }
+
+  .qc-col-header {
+    padding: 16px 18px 12px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0; display: flex; align-items: center;
+    justify-content: space-between; gap: 8px;
+  }
+  .qc-col-title {
+    font-size: 0.67rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-light);
+  }
+  .qc-badge {
+    font-size: 0.68rem; font-weight: 700;
+    padding: 3px 9px; border-radius: 20px;
+    letter-spacing: 0.03em; white-space: nowrap;
+  }
+  .badge-pending { background: var(--pending-light); color: #6b7280; }
+  .badge-pass    { background: var(--pass-light);    color: var(--pass); }
+  .badge-fail    { background: var(--fail-light);    color: var(--fail); }
+  .badge-warn    { background: var(--warn-light);    color: var(--warn); }
+
+  /* scrollable checklist */
+  .qc-scroll {
+    flex: 1; overflow-y: auto;
+    padding: 12px 16px; display: flex; flex-direction: column; gap: 16px;
+    /* match a sensible viewport height — footer is ~160px, header ~52px */
+    max-height: calc(100vh - 420px);
+    min-height: 200px;
+  }
+  .qc-scroll::-webkit-scrollbar { width: 4px; }
+  .qc-scroll::-webkit-scrollbar-track { background: transparent; }
+  .qc-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .qc-section-title {
+    font-size: 0.62rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-light);
+    margin-bottom: 6px; padding-bottom: 5px; border-bottom: 1px solid var(--border);
+  }
+  .qc-items { display: flex; flex-direction: column; gap: 5px; }
+
+  .qc-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px; border-radius: var(--radius-sm);
+    background: var(--pending-light); border: 1px solid transparent;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .qc-item.pass { background: var(--pass-light); border-color: #bbf7d0; }
+  .qc-item.fail { background: var(--fail-light); border-color: #fecaca; }
+  .qc-item.inactive { opacity: 0.38; pointer-events: none; }
+
+  .qc-icon {
+    width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.62rem; font-weight: 800; margin-top: 2px;
+  }
+  .qc-icon.pending { background: #d1d5db; color: white; }
+  .qc-icon.pass    { background: var(--pass); color: white; }
+  .qc-icon.fail    { background: var(--fail); color: white; }
+
+  .qc-body { flex: 1; min-width: 0; }
+  .qc-label { font-size: 0.78rem; font-weight: 600; color: var(--text); line-height: 1.3; }
+  .qc-desc  { font-size: 0.69rem; color: var(--text-muted); margin-top: 1px; line-height: 1.4; }
+
+  /* Inline note — shown on fail */
+  .qc-note-input {
+    display: none; width: 100%; margin-top: 6px;
+    padding: 5px 8px; border: 1.5px solid #fca5a5; border-radius: 4px;
+    font-size: 0.72rem; font-family: inherit; color: var(--text);
+    background: white; outline: none; resize: none; min-height: 42px; line-height: 1.4;
+  }
+  .qc-note-input:focus { border-color: var(--fail); }
+  .qc-note-input.visible { display: block; }
+
+  .qc-mark-btn {
+    flex-shrink: 0; padding: 3px 8px;
+    font-size: 0.65rem; font-weight: 700; border-radius: 4px;
+    border: 1px solid var(--border); background: white;
+    cursor: pointer; color: var(--text-muted);
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .qc-mark-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .qc-mark-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .qc-mark-btn.is-fail { border-color: #fca5a5; color: var(--fail); }
+
+  /* QC footer */
+  .qc-footer {
+    flex-shrink: 0; border-top: 1px solid var(--border);
+    padding: 12px 16px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .free-text-label {
+    font-size: 0.66rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  #free-text-feedback {
+    width: 100%; padding: 7px 10px;
+    border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 0.78rem; font-family: inherit; color: var(--text);
+    background: var(--bg); outline: none; resize: none;
+    min-height: 54px; line-height: 1.5; transition: border-color 0.2s;
+  }
+  #free-text-feedback:focus { border-color: var(--accent); }
+  #free-text-feedback:disabled { opacity: 0.35; }
+  .free-text-hint { font-size: 0.67rem; color: var(--text-light); line-height: 1.4; margin-top: 3px; }
+
+  .verdict-row { display: flex; gap: 7px; }
+  .btn-approve {
+    flex: 1; padding: 9px 8px;
+    background: var(--pass); color: white; border: none;
+    border-radius: var(--radius-sm); font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; opacity: 0.35; transition: opacity 0.2s;
+  }
+  .btn-approve.ready { opacity: 1; }
+  .btn-approve.ready:hover { opacity: 0.88; }
+
+  .btn-discard {
+    flex: 1; padding: 9px 8px;
+    background: var(--fail-light); color: var(--fail);
+    border: 1px solid #fecaca; border-radius: var(--radius-sm);
+    font-size: 0.78rem; font-weight: 700;
+    cursor: pointer; opacity: 0.35; transition: opacity 0.2s;
+  }
+  .btn-discard.ready { opacity: 1; }
+  .btn-discard.ready:hover { opacity: 0.85; }
+
+  #verdict-text {
+    font-size: 0.7rem; color: var(--text-muted);
+    line-height: 1.4; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <h1>FloPo Image Generator</h1>
+  <p>Visual Style Guide v2.0 · DALL-E 3 HD · 1792 × 1024</p>
+</div>
+
+<!-- API Key -->
+<div class="card">
+  <div class="card-title">OpenAI API Key</div>
+  <div class="api-row">
+    <input type="password" id="api-key" placeholder="sk-..." autocomplete="off"/>
+  </div>
+  <p class="api-note">Used only in this browser session · never stored · ~£0.06 per image</p>
+</div>
+
+<!-- Controls -->
+<div class="card">
+  <div class="card-title">Image Parameters</div>
+  <div class="controls-grid">
+    <div class="control-group">
+      <div class="control-group-label">Image Type</div>
+      <div class="toggle-row" id="toggle-type">
+        <span class="toggle active" data-val="hero">Hero</span>
+        <span class="toggle" data-val="montessori">Montessori</span>
+        <span class="toggle" data-val="forest">Forest School</span>
+        <span class="toggle" data-val="reggio">Reggio Emilia</span>
+        <span class="toggle" data-val="steiner">Steiner</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="control-group-label">Age Range</div>
+      <div class="toggle-row" id="toggle-age">
+        <span class="toggle active" data-val="12-24m">12–24m</span>
+        <span class="toggle" data-val="2-3yrs">2–3 yrs</span>
+        <span class="toggle" data-val="3-4yrs">3–4 yrs</span>
+        <span class="toggle" data-val="mixed">Mixed 1–4</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="control-group-label">Scene Template</div>
+      <div class="toggle-row" id="toggle-template">
+        <span class="toggle active" data-val="A">A – Tabletop</span>
+        <span class="toggle" data-val="B">B – Floor</span>
+        <span class="toggle" data-val="C">C – Outdoor</span>
+        <span class="toggle" data-val="D">D – Materials</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="control-group-label">Children Present</div>
+      <div class="toggle-row" id="toggle-children">
+        <span class="toggle active" data-val="yes">Yes</span>
+        <span class="toggle" data-val="no">No</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="activity-row">
+    <div class="field">
+      <label>Activity Description<span class="field-required">*</span></label>
+      <textarea id="activity-desc" placeholder="e.g. Observing and recording daily weather using clipboards and weather symbols"></textarea>
+      <div class="field-error-msg" id="activity-err">Please describe the activity before generating.</div>
+    </div>
+    <div class="field">
+      <label>Materials (comma-separated)<span class="field-required">*</span></label>
+      <textarea id="materials" placeholder="e.g. clipboard, chunky crayons, laminated weather symbol cards, A5 recording sheets"></textarea>
+      <div class="field-error-msg" id="materials-err">Please list the materials before generating.</div>
+    </div>
+  </div>
+
+  <button class="generate-btn" id="gen-btn" onclick="generate()">Generate Image</button>
+</div>
+
+<!-- Review panel -->
+<div class="review-card">
+
+  <!-- Left: image -->
+  <div class="image-col">
+    <div class="col-label">Preview</div>
+    <div id="error-msg"></div>
+    <div id="feedback-banner"></div>
+    <div id="image-area">
+      <div class="img-placeholder">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+          <rect x="3" y="3" width="18" height="18" rx="2.5"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <p>Configure parameters above<br>and click Generate</p>
+      </div>
+    </div>
+    <div class="image-actions">
+      <button class="btn" id="btn-regen" onclick="generate()" disabled>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Regenerate
+      </button>
+      <button class="btn" id="btn-dl" onclick="downloadImage()" disabled>
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download
+      </button>
+    </div>
+  </div>
+
+  <!-- Right: QC -->
+  <div class="qc-col">
+
+    <div class="qc-col-header">
+      <div class="qc-col-title">QC Checklist — v2.0</div>
+      <span class="qc-badge badge-pending" id="qc-badge">Awaiting image</span>
+    </div>
+
+    <div class="qc-scroll" id="qc-scroll">
+
+      <div>
+        <div class="qc-section-title">§1 Camera & Optics</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-camera-level">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Child eye-level camera</div>
+              <div class="qc-desc">35mm equiv. No ultra-wide or telephoto. Context in frame.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-camera-level')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-dof">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Moderate depth of field</div>
+              <div class="qc-desc">Subject sharp, background legible. No extreme blur or cutout edges.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-dof')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-grain">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Organic film grain visible</div>
+              <div class="qc-desc">Even grain. No digital gloss or hyper-sharp edges. Subtle vignette.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-grain')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="qc-section-title">§1 Lighting & Tone</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-lighting">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Single window-led light source</div>
+              <div class="qc-desc">Soft shadows. No overhead spot or studio fill.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-lighting')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-tonal">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Muted contrast, subtle warmth</div>
+              <div class="qc-desc">No deep blacks. Highlights rolled off. Neutral realistic skin tones.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-tonal')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="qc-section-title">§2 Image Type</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-single-ethos">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Single ethos only — no mixing</div>
+              <div class="qc-desc">No composite layouts. No foreign ethos elements in frame.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-single-ethos')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-framing-unique" style="display:none">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Structural variation from hero</div>
+              <div class="qc-desc">Different angle (≥15°), crop, surface, materials, children.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-framing-unique')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="qc-section-title">§5 Materials</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-materials-matte">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Matte, physically believable materials</div>
+              <div class="qc-desc">No hyper-glossy paint or plastic. Matte surface rendering.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-materials-matte')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-imperfection">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">At least one visible imperfection</div>
+              <div class="qc-desc">Paper curl, paint smudge, fabric crease, wood grain, uneven pressure.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-imperfection')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="qc-section-title">§6 Environment</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-uk-setting">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Realistic UK early years setting</div>
+              <div class="qc-desc">Child-height furniture. No showroom finish, sterile feel, or influencer styling.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-uk-setting')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="qc-children-section">
+        <div class="qc-section-title">§7 Child Representation</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-age-match">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Children match stated age range</div>
+              <div class="qc-desc">Appropriate grip and posture for selected age band.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-age-match')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-natural-diversity">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Natural diversity, realistic clothing</div>
+              <div class="qc-desc">No staged tokenism. Everyday non-matching UK children's clothing.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-natural-diversity')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-no-pose">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">No poses, no camera awareness</div>
+              <div class="qc-desc">No eye contact. No mirrored poses. No identical hand positions.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-no-pose')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-skin">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">Natural skin — no airbrushing</div>
+              <div class="qc-desc">Realistic skin texture. Not smoothed or digitally cleaned.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-skin')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="qc-section-title">§10 Anti-Digital</div>
+        <div class="qc-items">
+          <div class="qc-item inactive" id="qc-no-symmetry">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">No bilateral symmetry</div>
+              <div class="qc-desc">Organic composition. Not centred or perfectly balanced.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-no-symmetry')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-no-saturation">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">No over-saturated primary colours</div>
+              <div class="qc-desc">Colours muted and natural. Not vibrant or toy-catalogue.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-no-saturation')">Pass</button>
+          </div>
+          <div class="qc-item inactive" id="qc-no-compositing">
+            <div class="qc-icon pending">–</div>
+            <div class="qc-body">
+              <div class="qc-label">No compositing or CGI feel</div>
+              <div class="qc-desc">No edge halos, mismatched shadows, artificial depth separation.</div>
+              <textarea class="qc-note-input" placeholder="Describe the issue for the next prompt…"></textarea>
+            </div>
+            <button class="qc-mark-btn" disabled onclick="cycleQC('qc-no-compositing')">Pass</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /qc-scroll -->
+
+    <!-- Footer -->
+    <div class="qc-footer">
+      <div>
+        <div class="free-text-label">Additional Steer for Next Generation</div>
+        <textarea id="free-text-feedback" disabled
+          placeholder="e.g. Children looked too old. Window light too warm. Try a slightly wider shot to show more of the room."></textarea>
+        <div class="free-text-hint">Your notes here, plus any fail reasons above, are injected directly into the next generation prompt.</div>
+      </div>
+      <div class="verdict-row">
+        <button class="btn-approve" id="btn-approve" onclick="approveImage()" disabled>✓ Approve & Download</button>
+        <button class="btn-discard" id="btn-discard" onclick="discardWithFeedback()" disabled>↺ Fix & Regenerate</button>
+      </div>
+      <div id="verdict-text">Generate an image to begin QC review</div>
+    </div>
+
+  </div><!-- /qc-col -->
+</div><!-- /review-card -->
+
+<script>
+// ── Data ────────────────────────────────────────────────
+const QC_IDS = [
+  'qc-camera-level','qc-dof','qc-grain',
+  'qc-lighting','qc-tonal',
+  'qc-single-ethos','qc-framing-unique',
+  'qc-materials-matte','qc-imperfection',
+  'qc-uk-setting',
+  'qc-age-match','qc-natural-diversity','qc-no-pose','qc-skin',
+  'qc-no-symmetry','qc-no-saturation','qc-no-compositing'
+];
+
+const QC_LABELS = {
+  'qc-camera-level':    'Camera is not at child eye-level or lens perspective is wrong',
+  'qc-dof':             'Depth of field is too extreme or portrait-mode cutout edges are visible',
+  'qc-grain':           'Organic film grain is missing — image appears digitally glossy or over-sharpened',
+  'qc-lighting':        'Lighting is not single-direction natural window light — studio fill or overhead spot is visible',
+  'qc-tonal':           'Contrast is too harsh, warmth is too strong, or skin tones are unrealistic',
+  'qc-single-ethos':    'Mixed ethos elements are visible in the frame',
+  'qc-framing-unique':  'Ethos image is too structurally similar to the hero image',
+  'qc-materials-matte': 'Materials appear hyper-glossy or artificially perfect',
+  'qc-imperfection':    'No visible minor imperfection present in materials or surfaces',
+  'qc-uk-setting':      'Setting does not look like a realistic UK early years environment',
+  'qc-age-match':       'Children do not match the stated age range or grip/posture is developmentally inappropriate',
+  'qc-natural-diversity':'Diversity appears staged or clothing is too uniform or styled',
+  'qc-no-pose':         'Children appear posed or are making direct eye contact with the camera',
+  'qc-skin':            'Skin appears airbrushed or unrealistically smooth',
+  'qc-no-symmetry':     'Composition is bilaterally symmetrical or too perfectly balanced',
+  'qc-no-saturation':   'Colours are excessively saturated — primary colour dominance present',
+  'qc-no-compositing':  'Image shows CGI behaviour or compositing artefacts'
+};
+
+let currentImageUrl = null;
+let qcStates = {};
+
+// ── Toggles ─────────────────────────────────────────────
+function initToggles(groupId) {
+  document.getElementById(groupId).querySelectorAll('.toggle').forEach(t => {
+    t.addEventListener('click', () => {
+      document.getElementById(groupId).querySelectorAll('.toggle').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      onParamChange();
+    });
+  });
+}
+['toggle-type','toggle-age','toggle-template','toggle-children'].forEach(initToggles);
+
+function getSelected(groupId) {
+  const a = document.getElementById(groupId).querySelector('.toggle.active');
+  return a ? a.dataset.val : null;
+}
+
+function onParamChange() {
+  const type     = getSelected('toggle-type');
+  const template = getSelected('toggle-template');
+
+  // Show structural variation check only for ethos images
+  document.getElementById('qc-framing-unique').style.display =
+    type !== 'hero' ? 'flex' : 'none';
+
+  // Template D forces no children
+  if (template === 'D') {
+    document.getElementById('toggle-children').querySelectorAll('.toggle').forEach(t => {
+      t.classList.toggle('active', t.dataset.val === 'no');
+    });
+  }
+
+  // Children section
+  document.getElementById('qc-children-section').style.display =
+    getSelected('toggle-children') === 'yes' ? 'block' : 'none';
+}
+onParamChange();
+
+// ── Prompt builder ───────────────────────────────────────
+function buildPrompt(corrections) {
+  const type     = getSelected('toggle-type');
+  const age      = getSelected('toggle-age');
+  const template = getSelected('toggle-template');
+  const children = getSelected('toggle-children') === 'yes';
+  const activity = document.getElementById('activity-desc').value.trim() || 'early years activity';
+  const materials= document.getElementById('materials').value.trim() || 'age-appropriate materials';
+
+  const typeLabels = {
+    hero:'Hero image – EYFS core execution',
+    montessori:'Montessori adaptation image',
+    forest:'Forest School adaptation image',
+    reggio:'Reggio Emilia adaptation image',
+    steiner:'Steiner / Waldorf adaptation image'
+  };
+  const ageLabels = {
+    '12-24m':'12 to 24 months','2-3yrs':'2 to 3 years',
+    '3-4yrs':'3 to 4 years','mixed':'mixed age 1 to 4 years'
+  };
+  const templateDesc = {
+    A:'Template A – Tabletop Activity: children at a child-height table, materials spread realistically, natural mid-process interaction.',
+    B:'Template B – Floor-Based Exploration: activity on a floor mat or low surface, open spatial framing, movement visible.',
+    C:'Template C – Outdoor Natural Context: uneven natural ground, real UK weather conditions implied, layered clothing, environmental depth.',
+    D:'Template D – Material Focus: no children, focus on material setup with clear environmental context, slightly closer framing.'
+  };
+  const ethosContext = {
+    hero:'Standard EYFS nursery or childminder room. Child-height wooden furniture. No ethos styling.',
+    montessori:'Montessori environment: low open wooden shelving, natural materials, muted earth tones, calm ordered space. No plastic clutter.',
+    forest:'Forest School outdoor setting: natural woodland or garden, uneven ground, mud, natural light. Children in waterproofs or wellies.',
+    reggio:'Reggio Emilia-inspired: light-filled space, natural and transparent materials, loose parts, sense of provocation and exploration.',
+    steiner:'Steiner/Waldorf setting: natural wooden and fabric materials, no plastic, soft natural colours, beeswax crayons, handmade aesthetic.'
+  };
+
+  const childStr = children
+    ? `Children aged ${ageLabels[age]} present. Developmentally appropriate grip and posture. Natural diversity without staged tokenism — varied skin tones, everyday non-matching UK clothing. No direct camera eye contact. No posed or mirrored expressions. Genuine natural engagement. Natural skin texture. No identical hand positions.`
+    : `No children present. Focus on materials and setting only.`;
+
+  let correctionBlock = '';
+  if (corrections && corrections.length > 0) {
+    correctionBlock = '\n\nCORRECTIONS FROM PREVIOUS GENERATION — apply all of these strictly:\n'
+      + corrections.map((c, i) => `${i + 1}. ${c}`).join('\n');
+  }
+
+  return `Photorealistic documentary-style photograph. NOT illustrated. NOT CGI. NOT stylised.
+
+IMAGE TYPE: ${typeLabels[type]}
+ACTIVITY: ${activity}
+MATERIALS: ${materials}
+SCENE: ${templateDesc[template]}
+ENVIRONMENT: ${ethosContext[type]} Realistic UK early years setting. No showroom perfection, sterile minimalism, influencer styling, luxury toy displays, or design-magazine composition.
+CHILDREN: ${childStr}
+CAMERA: Child eye-level (~90–100cm). 35mm full-frame equivalent. Slight 10–15° off-axis angle. No ultra-wide or telephoto. Full environmental context in frame.
+DEPTH OF FIELD: Moderate. Subject clear. Background legible but softly resolved. No extreme bokeh or portrait cutout edges.
+LIGHTING: Single natural window light source to one side. Soft shadows. No overhead spotlight. No studio fill. Slight warmth — not orange. Muted contrast. Highlights gently rolled off.
+GRAIN & FINISH: Fine organic analogue film grain evenly distributed. Reduced digital micro-contrast. Barely perceptible natural vignette. No hyper-sharp edges. No digital gloss.
+MATERIALS BEHAVIOUR: Physically believable. Matte rendering. Reduced specular on plastic. At least one visible minor imperfection — paper curl, paint smudge, fabric crease, wood grain, or uneven crayon pressure.
+ANTI-DIGITAL: No bilateral symmetry. No over-saturated primary colours. No airbrushed skin. No compositing artefacts. No CGI sheen. No hyper-clean surfaces. No edge-to-edge sharpness. No perfect lighting balance.
+Aspect ratio: 16:9 landscape.${correctionBlock}`;
+}
+
+// ── Generate ─────────────────────────────────────────────
+async function generate(corrections) {
+  const key = document.getElementById('api-key').value.trim();
+  if (!key || !key.startsWith('sk-')) {
+    showError('Please enter a valid OpenAI API key (starts with "sk-").');
+    return;
+  }
+
+  // Required field validation
+  const activityEl  = document.getElementById('activity-desc');
+  const materialsEl = document.getElementById('materials');
+  const activityErr = document.getElementById('activity-err');
+  const materialsErr= document.getElementById('materials-err');
+  const activity    = activityEl.value.trim();
+  const materials   = materialsEl.value.trim();
+  let hasError = false;
+
+  if (!activity) {
+    activityEl.classList.add('field-error');
+    activityErr.classList.add('visible');
+    hasError = true;
+  } else {
+    activityEl.classList.remove('field-error');
+    activityErr.classList.remove('visible');
+  }
+  if (!materials) {
+    materialsEl.classList.add('field-error');
+    materialsErr.classList.add('visible');
+    hasError = true;
+  } else {
+    materialsEl.classList.remove('field-error');
+    materialsErr.classList.remove('visible');
+  }
+  if (hasError) return;
+
+  hideError();
+  currentImageUrl = null;
+  resetQC();
+
+  ['gen-btn','btn-regen','btn-dl'].forEach(id => document.getElementById(id).disabled = true);
+
+  const banner = document.getElementById('feedback-banner');
+  if (corrections && corrections.length > 0) {
+    banner.style.display = 'block';
+    banner.textContent = `↺ Regenerating with ${corrections.length} correction${corrections.length !== 1 ? 's' : ''} applied to prompt.`;
+  } else {
+    banner.style.display = 'none';
+  }
+
+  document.getElementById('image-area').innerHTML =
+    `<div class="spinner-wrap"><div class="spinner"></div><p>Generating with DALL·E 3 HD…</p></div>`;
+
+  try {
+    const isHero   = getSelected('toggle-type') === 'hero';
+    const imgSize  = isHero ? '1792x1024' : '1024x1024';
+
+    const resp = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model: 'dall-e-3', prompt: buildPrompt(corrections || []),
+        n: 1, size: imgSize, quality: 'hd', style: 'natural',
+        response_format: 'b64_json'
+      })
+    });
+
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error?.message || `OpenAI error ${resp.status}`);
+
+    const b64 = data.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image data returned.');
+
+    currentImageUrl = `data:image/png;base64,${b64}`;
+    document.getElementById('image-area').innerHTML =
+      `<img src="${currentImageUrl}" alt="Generated FloPo activity image">`;
+    document.getElementById('btn-dl').disabled = false;
+    activateQC();
+
+  } catch (err) {
+    document.getElementById('image-area').innerHTML = `<div class="img-placeholder">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg><p>Generation failed</p></div>`;
+    showError(`Error: ${err.message}`);
+    banner.style.display = 'none';
+  } finally {
+    ['gen-btn','btn-regen'].forEach(id => document.getElementById(id).disabled = false);
+  }
+}
+
+// ── QC logic ─────────────────────────────────────────────
+function getVisibleQCIds() {
+  return QC_IDS.filter(id => {
+    const el = document.getElementById(id);
+    if (!el || el.style.display === 'none') return false;
+    let p = el.parentElement;
+    while (p) { if (p.style.display === 'none') return false; p = p.parentElement; }
+    return true;
+  });
+}
+
+function resetQC() {
+  qcStates = {};
+  QC_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    qcStates[id] = 'pending';
+    el.className = 'qc-item inactive';
+    const icon = el.querySelector('.qc-icon');
+    icon.className = 'qc-icon pending';
+    icon.textContent = '–';
+    const note = el.querySelector('.qc-note-input');
+    note.classList.remove('visible');
+    note.value = '';
+    const btn = el.querySelector('.qc-mark-btn');
+    btn.disabled = true;
+    btn.textContent = 'Pass';
+    btn.classList.remove('is-fail');
+  });
+  document.getElementById('qc-badge').className = 'qc-badge badge-pending';
+  document.getElementById('qc-badge').textContent = 'Awaiting image';
+  document.getElementById('btn-approve').disabled = true;
+  document.getElementById('btn-approve').classList.remove('ready');
+  document.getElementById('btn-discard').disabled = true;
+  document.getElementById('btn-discard').classList.remove('ready');
+  document.getElementById('verdict-text').textContent = 'Generate an image to begin QC review';
+  const ftf = document.getElementById('free-text-feedback');
+  ftf.disabled = true;
+  ftf.value = '';
+}
+
+function activateQC() {
+  onParamChange();
+  getVisibleQCIds().forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.remove('inactive');
+    el.querySelector('.qc-mark-btn').disabled = false;
+  });
+  document.getElementById('free-text-feedback').disabled = false;
+  // Enable discard immediately so user can regenerate without reviewing
+  document.getElementById('btn-discard').disabled = false;
+  document.getElementById('btn-discard').classList.add('ready');
+  updateQCSummary();
+}
+
+function cycleQC(id) {
+  if (!currentImageUrl) return;
+  const current = qcStates[id] || 'pending';
+  // pending → pass → fail → pass (no pending after first mark)
+  const next = current === 'pending' ? 'pass' : current === 'pass' ? 'fail' : 'pass';
+  qcStates[id] = next;
+
+  const el  = document.getElementById(id);
+  el.className = `qc-item ${next}`;
+
+  const icon = el.querySelector('.qc-icon');
+  icon.className = `qc-icon ${next}`;
+  icon.textContent = next === 'pass' ? '✓' : '✕';
+
+  const btn  = el.querySelector('.qc-mark-btn');
+  const note = el.querySelector('.qc-note-input');
+
+  if (next === 'pass') {
+    btn.textContent = 'Mark fail';
+    btn.classList.remove('is-fail');
+    note.classList.remove('visible');
+  } else {
+    btn.textContent = 'Mark pass';
+    btn.classList.add('is-fail');
+    note.classList.add('visible');
+    note.focus();
+  }
+
+  updateQCSummary();
+}
+
+function updateQCSummary() {
+  if (!currentImageUrl) return;
+  const visible  = getVisibleQCIds();
+  const passes   = visible.filter(id => qcStates[id] === 'pass').length;
+  const fails    = visible.filter(id => qcStates[id] === 'fail').length;
+  const pending  = visible.filter(id => qcStates[id] === 'pending').length;
+  const total    = visible.length;
+
+  const badge      = document.getElementById('qc-badge');
+  const verdict    = document.getElementById('verdict-text');
+  const btnApprove = document.getElementById('btn-approve');
+
+  if (pending > 0) {
+    badge.className = 'qc-badge badge-pending';
+    badge.textContent = `${passes + fails}/${total} reviewed`;
+    verdict.textContent = `${pending} check${pending !== 1 ? 's' : ''} remaining`;
+    btnApprove.disabled = true;
+    btnApprove.classList.remove('ready');
+    return;
+  }
+
+  if (fails === 0) {
+    badge.className = 'qc-badge badge-pass';
+    badge.textContent = `✓ All ${total} passed`;
+    verdict.textContent = 'All checks passed — ready to approve.';
+    btnApprove.disabled = false;
+    btnApprove.classList.add('ready');
+  } else if (fails === 1) {
+    badge.className = 'qc-badge badge-warn';
+    badge.textContent = `⚠ 1 check failed`;
+    verdict.textContent = 'Minor issue — approve or fix & regenerate.';
+    btnApprove.disabled = false;
+    btnApprove.classList.add('ready');
+  } else {
+    badge.className = 'qc-badge badge-fail';
+    badge.textContent = `✕ ${fails} checks failed`;
+    verdict.textContent = `${fails} failures — fix & regenerate per §12.`;
+    btnApprove.disabled = true;
+    btnApprove.classList.remove('ready');
+  }
+}
+
+function buildCorrections() {
+  const list = [];
+  getVisibleQCIds().forEach(id => {
+    if (qcStates[id] === 'fail') {
+      const note = document.getElementById(id).querySelector('.qc-note-input').value.trim();
+      list.push(note ? `${QC_LABELS[id]}: ${note}` : QC_LABELS[id]);
+    }
+  });
+  const free = document.getElementById('free-text-feedback').value.trim();
+  if (free) list.push(`General steer: ${free}`);
+  return list;
+}
+
+function discardWithFeedback() { generate(buildCorrections()); }
+function approveImage()        { downloadImage(); }
+
+function downloadImage() {
+  if (!currentImageUrl) return;
+  const a = document.createElement('a');
+  a.href = currentImageUrl;
+  a.download = `flopo-${getSelected('toggle-type')}-${getSelected('toggle-age')}-${Date.now()}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideError() { document.getElementById('error-msg').style.display = 'none'; }
+
+document.getElementById('api-key').addEventListener('keydown', e => {
+  if (e.key === 'Enter') generate();
+});
+
+['activity-desc','materials'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    document.getElementById(id).classList.remove('field-error');
+    const errId = id === 'activity-desc' ? 'activity-err' : 'materials-err';
+    document.getElementById(errId).classList.remove('visible');
+  });
+});
+
+resetQC();
+</script>
+</body>
+</html>

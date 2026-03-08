@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FloPo Image Generator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f2f0ec;
+    --surface: #ffffff;
+    --border: #e8e4de;
+    --text: #252320;
+    --text-muted: #9a958e;
+    --text-light: #c5c0b8;
+    --accent: #3d6b7e;
+    --accent-light: #eaf2f5;
+    --warn: #b45309;
+    --warn-light: #fef3e2;
+    --pass: #1a7340;
+    --pass-light: #e8f5ee;
+    --fail: #b91c1c;
+    --fail-light: #fef2f2;
+    --pending: #6b7280;
+    --pending-light: #f3f4f6;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px 60px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+
+  /* ── Header ── */
+  .app-header {
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .app-header h1 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .app-header p {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
+    padding: 24px;
+    width: 100%;
+    max-width: 860px;
+  }
+  .card-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-light);
+    margin-bottom: 14px;
+  }
+
+  /* ── API Key ── */
+  .api-row {
+    display: flex;
+    gap: 10px;
+  }
+  .api-row input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-family: 'SF Mono', 'Fira Mono', monospace;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .api-row input:focus { border-color: var(--accent); }
+  .api-note {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    margin-top: 8px;
+    line-height: 1.55;
+  }
+
+  /* ── Toggle Groups ── */
+  .controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+  }
+  @media (max-width: 600px) { .controls-grid { grid-template-columns: 1fr; } }
+
+  .control-group { display: flex; flex-direction: column; gap: 8px; }
+  .control-group-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+  }
+
+  .toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--text-muted);
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .toggle:hover { border-color: var(--accent); color: var(--accent); }
+  .toggle.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .toggle.warn.active {
+    background: var(--warn);
+    border-color: var(--warn);
+    color: white;
+  }
+
+  /* ── Activity Input ── */
+  .activity-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 600px) { .activity-row { grid-template-columns: 1fr; } }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+  }
+  .field input, .field textarea {
+    padding: 9px 12px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    outline: none;
+    transition: border-color 0.2s;
+    resize: none;
+  }
+  .field input:focus, .field textarea:focus { border-color: var(--accent); }
+  .field textarea { min-height: 72px; }
+
+  /* ── Generate Button ── */
+  .generate-btn {
+    width: 100%;
+    padding: 13px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    letter-spacing: 0.01em;
+  }
+  .generate-btn:hover:not(:disabled) { opacity: 0.88; }
+  .generate-btn:active:not(:disabled) { transform: scale(0.99); }
+  .generate-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── Image Preview ── */
+  #image-area {
+    width: 100%;
+    aspect-ratio: 16/9;
+    border-radius: var(--radius);
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  #image-area img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: calc(var(--radius) - 2px);
+    display: block;
+  }
+  .img-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-light);
+    text-align: center;
+    padding: 24px;
+  }
+  .img-placeholder p { font-size: 0.82rem; line-height: 1.5; }
+  .img-placeholder svg { opacity: 0.4; }
+
+  .spinner-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-wrap p { font-size: 0.82rem; color: var(--text-muted); }
+
+  .image-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--text-muted);
+    transition: all 0.15s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* ── Error ── */
+  #error-msg {
+    display: none;
+    font-size: 0.82rem;
+    color: var(--fail);
+    background: var(--fail-light);
+    border: 1px solid #fecaca;
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+    margin-bottom: 12px;
+  }
+
+  /* ── QC Checklist ── */
+  .qc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .qc-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .qc-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+  }
+  .badge-pending { background: var(--pending-light); color: var(--pending); }
+  .badge-pass    { background: var(--pass-light); color: var(--pass); }
+  .badge-fail    { background: var(--fail-light); color: var(--fail); }
+  .badge-warn    { background: var(--warn-light); color: var(--warn); }
+
+  .qc-sections { display: flex; flex-direction: column; gap: 20px; }
+
+  .qc-section-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-light);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .qc-items { display: flex; flex-direction: column; gap: 6px; }
+
+  .qc-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--pending-light);
+    border: 1px solid transparent;
+    transition: all 0.25s;
+  }
+  .qc-item.pass {
+    background: var(--pass-light);
+    border-color: #bbf7d0;
+  }
+  .qc-item.fail {
+    background: var(--fail-light);
+    border-color: #fecaca;
+  }
+  .qc-item.warn {
+    background: var(--warn-light);
+    border-color: #fed7aa;
+  }
+
+  .qc-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    margin-top: 1px;
+  }
+  .qc-icon.pending { background: #d1d5db; color: white; }
+  .qc-icon.pass    { background: var(--pass); color: white; }
+  .qc-icon.fail    { background: var(--fail); color: white; }
+  .qc-icon.warn    { background: var(--warn); color: white; }
+
+  .qc-text { flex: 1; }
+  .qc-label {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .qc-desc {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+    line-height: 1.45;
+  }
+  .qc-feedback {
+    font-size: 0.75rem;
+    margin-top: 4px;
+    font-style: italic;
+    line-height: 1.45;
+  }
+  .qc-feedback.pass { color: var(--pass); }
+  .qc-feedback.fail { color: var(--fail); }
+  .qc-feedback.warn { color: var(--warn); }
+
+  .qc-action-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-approve {
+    padding: 9px 18px;
+    background: var(--pass);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+  .btn-approve.ready { opacity: 1; }
+  .btn-approve.ready:hover { opacity: 0.88; }
+
+  .btn-discard {
+    padding: 9px 18px;
+    background: var(--fail-light);
+    color: var(--fail);
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+  .btn-discard.ready { opacity: 1; }
+  .btn-discard.ready:hover { opacity: 0.8; }
+
+  .verdict {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    flex: 1;
+    display: flex;
+    align-items: center;
+  }
+
+  /* ── Manual QC toggles ── */
+  .manual-note {
+    font-size: 0.72rem;
+    color: var(--text-light);
+    text-align: center;
+    padding: 8px;
+    border-radius: var(--radius-sm);
+    background: var(--bg);
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+
+  .qc-toggle-btn {
+    margin-left: auto;
+    padding: 3px 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: white;
+    cursor: pointer;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .qc-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <h1>FloPo Image Generator</h1>
+  <p>Visual Style Guide v2.0 · DALL-E 3 HD · 1792 × 1024</p>
+</div>
+
+<!-- API Key -->
+<div class="card">
+  <div class="card-title">OpenAI API Key</div>
+  <div class="api-row">
+    <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" />
+  </div>
+  <p class="api-note">Used only in this browser session to call the OpenAI API directly. Never stored. ~£0.06 per generation.</p>
+</div>
+
+<!-- Controls -->
+<div class="card">
+  <div class="card-title">Image Parameters</div>
+  <div class="controls-grid">
+
+    <div class="control-group">
+      <div class="control-group-label">Image Type</div>
+      <div class="toggle-row" id="toggle-type">
+        <span class="toggle active" data-val="hero">Hero</span>
+        <span class="toggle" data-val="montessori">Montessori</span>
+        <span class="toggle" data-val="forest">Forest School</span>
+        <span class="toggle" data-val="reggio">Reggio Emilia</span>
+        <span class="toggle" data-val="steiner">Steiner</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="control-group-label">Age Range</div>
+      <div class="toggle-row" id="toggle-age">
+        <span class="toggle active" data-val="12-24m">12–24m</span>
+        <span class="toggle" data-val="2-3yrs">2–3 yrs</span>
+        <span class="toggle" data-val="3-4yrs">3–4 yrs</span>
+        <span class="toggle" data-val="mixed">Mixed 1–4</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="control-group-label">Scene Template</div>
+      <div class="toggle-row" id="toggle-template">
+        <span class="toggle active" data-val="A">A – Tabletop</span>
+        <span class="toggle" data-val="B">B – Floor</span>
+        <span class="toggle" data-val="C">C – Outdoor</span>
+        <span class="toggle" data-val="D">D – Material Focus</span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <div class="control-group-label">Children Present</div>
+      <div class="toggle-row" id="toggle-children">
+        <span class="toggle active" data-val="yes">Yes</span>
+        <span class="toggle" data-val="no">No (materials only)</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Activity & Materials -->
+  <div style="margin-top:18px;">
+    <div class="activity-row">
+      <div class="field">
+        <label>Activity Description</label>
+        <textarea id="activity-desc" placeholder="e.g. Observing and recording daily weather using clipboards and weather symbols">Observing and recording daily weather using clipboards and weather symbols</textarea>
+      </div>
+      <div class="field">
+        <label>Materials (comma-separated)</label>
+        <textarea id="materials" placeholder="e.g. clipboard, chunky crayons, laminated weather symbol cards, A5 recording sheets">clipboard, chunky crayons, laminated weather symbol cards, A5 recording sheets</textarea>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px;">
+    <button class="generate-btn" id="gen-btn" onclick="generate()">Generate Image</button>
+  </div>
+</div>
+
+<!-- Preview -->
+<div class="card">
+  <div class="card-title">Preview</div>
+  <div id="error-msg"></div>
+  <div id="image-area">
+    <div class="img-placeholder">
+      <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3">
+        <rect x="3" y="3" width="18" height="18" rx="2.5"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <polyline points="21 15 16 10 5 21"/>
+      </svg>
+      <p>Configure parameters above and click Generate</p>
+    </div>
+  </div>
+  <div class="image-actions">
+    <button class="btn" id="btn-regen" onclick="generate()" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Regenerate
+    </button>
+    <button class="btn" id="btn-dl" onclick="downloadImage()" disabled>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download
+    </button>
+  </div>
+</div>
+
+<!-- QC Checklist -->
+<div class="card">
+  <div class="qc-header">
+    <div class="card-title" style="margin-bottom:0;">Style Guide v2.0 — QC Checklist</div>
+    <div class="qc-summary">
+      <span class="qc-badge badge-pending" id="qc-badge">Awaiting image</span>
+    </div>
+  </div>
+
+  <div class="manual-note" id="qc-note">
+    Generate an image to activate the checklist. After generation, manually review each item and mark pass or fail based on what you observe in the preview.
+  </div>
+
+  <div class="qc-sections" id="qc-sections">
+
+    <!-- Section: Camera & Optical -->
+    <div>
+      <div class="qc-section-title">§1 Camera, Optics & Grain</div>
+      <div class="qc-items">
+        <div class="qc-item pending" id="qc-camera-level">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Camera at child eye-level (max 20cm above)</div>
+            <div class="qc-desc">35mm equivalent. No ultra-wide distortion or telephoto compression.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-camera-level')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-dof">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Moderate depth of field</div>
+            <div class="qc-desc">Subject sharp, background legible. No extreme blur or portrait-mode cutout edges.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-dof')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-grain">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Organic film grain visible</div>
+            <div class="qc-desc">Fine grain evenly distributed. No hyper-sharp edges, no digital gloss. Subtle vignette.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-grain')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-environment-context">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Environmental context included</div>
+            <div class="qc-desc">No floating subjects. Setting visible and legible around the activity.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-environment-context')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Lighting & Tone -->
+    <div>
+      <div class="qc-section-title">§1 Lighting & Tonal Treatment</div>
+      <div class="qc-items">
+        <div class="qc-item pending" id="qc-lighting">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Single-direction natural window light</div>
+            <div class="qc-desc">Soft shadow edges. No overhead spotlight. No multi-direction studio fill.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-lighting')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-tonal">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Muted contrast, subtle warmth</div>
+            <div class="qc-desc">No deep blacks. Highlights gently rolled off. Skin tones neutral and realistic. Not orange.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-tonal')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Image Type -->
+    <div>
+      <div class="qc-section-title">§2 Image Type Compliance</div>
+      <div class="qc-items">
+        <div class="qc-item pending" id="qc-single-ethos">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Single ethos only — no mixing</div>
+            <div class="qc-desc">No composite or split layouts. No elements from a different ethos visible in frame.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-single-ethos')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-framing-unique" style="display:none">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Structural variation from hero (ethos images)</div>
+            <div class="qc-desc">Different camera angle (≥15°), different crop, different surface, different material arrangement, different children.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-framing-unique')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Materials -->
+    <div>
+      <div class="qc-section-title">§5 Material Behaviour</div>
+      <div class="qc-items">
+        <div class="qc-item pending" id="qc-materials-matte">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Materials appear matte and physically believable</div>
+            <div class="qc-desc">No hyper-glossy paint. Reduced specular on plastic. Matte surface rendering preferred.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-materials-matte')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-imperfection">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">At least one visible minor imperfection</div>
+            <div class="qc-desc">Paint smudge, paper curl, fabric crease, wood grain, misalignment, uneven stamp pressure.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-imperfection')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Environment -->
+    <div>
+      <div class="qc-section-title">§6 Environment</div>
+      <div class="qc-items">
+        <div class="qc-item pending" id="qc-uk-setting">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Realistic UK early years setting</div>
+            <div class="qc-desc">Child-height furniture. No showroom perfection. No sterile minimalism. No influencer styling.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-uk-setting')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Children -->
+    <div>
+      <div class="qc-section-title">§7 Child Representation</div>
+      <div class="qc-items" id="qc-children-section">
+        <div class="qc-item pending" id="qc-age-match">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Children match stated age range</div>
+            <div class="qc-desc">Developmentally appropriate grip and posture for the selected age band.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-age-match')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-natural-diversity">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Natural diversity — no staged tokenism</div>
+            <div class="qc-desc">Realistic everyday clothing. No matching outfits. Authentic range of skin tones.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-natural-diversity')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-no-pose">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">No posed expressions or camera awareness</div>
+            <div class="qc-desc">No direct camera engagement. No perfect mirrored poses. No identical hand positioning.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-no-pose')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-skin">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">Natural skin texture — no airbrushing</div>
+            <div class="qc-desc">Skin must retain realistic texture. No smoothed or digitally cleaned skin.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-skin')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Anti-Digital -->
+    <div>
+      <div class="qc-section-title">§10 Anti-Digital Failure Conditions</div>
+      <div class="qc-items">
+        <div class="qc-item pending" id="qc-no-symmetry">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">No bilateral symmetry in subject placement</div>
+            <div class="qc-desc">Composition must feel organic, not centred or perfectly balanced.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-no-symmetry')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-no-saturation">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">No excessively saturated primary colours</div>
+            <div class="qc-desc">Colours should feel muted and natural, not vibrant or toy-catalogue.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-no-saturation')">Mark</button>
+        </div>
+        <div class="qc-item pending" id="qc-no-compositing">
+          <div class="qc-icon pending">–</div>
+          <div class="qc-text">
+            <div class="qc-label">No obvious compositing or CGI behaviour</div>
+            <div class="qc-desc">No edge halos, no mismatched shadows, no artificial depth separation.</div>
+          </div>
+          <button class="qc-toggle-btn" onclick="cycleQC('qc-no-compositing')">Mark</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /qc-sections -->
+
+  <!-- Verdict -->
+  <div class="qc-action-row">
+    <button class="btn-approve" id="btn-approve" onclick="approveImage()" disabled>✓ Approve & Download</button>
+    <button class="btn-discard" id="btn-discard" onclick="discardImage()" disabled>✕ Discard & Regenerate</button>
+    <div class="verdict" id="verdict-text">Complete QC review to unlock approval</div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let currentImageUrl = null;
+let qcStates = {}; // id → 'pending' | 'pass' | 'fail'
+
+const QC_IDS = [
+  'qc-camera-level','qc-dof','qc-grain','qc-environment-context',
+  'qc-lighting','qc-tonal','qc-single-ethos',
+  'qc-materials-matte','qc-imperfection',
+  'qc-uk-setting',
+  'qc-age-match','qc-natural-diversity','qc-no-pose','qc-skin',
+  'qc-no-symmetry','qc-no-saturation','qc-no-compositing'
+];
+
+// ── Toggle Groups ──
+function initToggles(groupId, single = true) {
+  const group = document.getElementById(groupId);
+  group.querySelectorAll('.toggle').forEach(t => {
+    t.addEventListener('click', () => {
+      if (single) {
+        group.querySelectorAll('.toggle').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+      } else {
+        t.classList.toggle('active');
+      }
+      onParamChange();
+    });
+  });
+}
+
+function getSelected(groupId) {
+  const active = document.getElementById(groupId).querySelector('.toggle.active');
+  return active ? active.dataset.val : null;
+}
+
+initToggles('toggle-type', true);
+initToggles('toggle-age', true);
+initToggles('toggle-template', true);
+initToggles('toggle-children', true);
+
+function onParamChange() {
+  const type = getSelected('toggle-type');
+  const hasChildren = getSelected('toggle-children') === 'yes';
+  const template = getSelected('toggle-template');
+
+  // Show structural variation check only for ethos images
+  const variationRow = document.getElementById('qc-framing-unique');
+  variationRow.style.display = (type !== 'hero') ? 'flex' : 'none';
+
+  // Template D = no children
+  if (template === 'D') {
+    document.getElementById('toggle-children').querySelectorAll('.toggle').forEach(t => {
+      if (t.dataset.val === 'no') t.classList.add('active');
+      else t.classList.remove('active');
+    });
+  }
+
+  // Hide children QC if no children
+  const childSection = document.getElementById('qc-children-section');
+  const childIds = ['qc-age-match','qc-natural-diversity','qc-no-pose','qc-skin'];
+  childSection.style.display = (getSelected('toggle-children') === 'yes') ? 'flex' : 'none';
+  childSection.style.flexDirection = 'column';
+  childSection.style.gap = '6px';
+}
+
+onParamChange();
+
+// ── Prompt Builder ──
+function buildPrompt() {
+  const type = getSelected('toggle-type');
+  const age = getSelected('toggle-age');
+  const template = getSelected('toggle-template');
+  const children = getSelected('toggle-children') === 'yes';
+  const activity = document.getElementById('activity-desc').value.trim() || 'early years activity';
+  const materials = document.getElementById('materials').value.trim() || 'age-appropriate materials';
+
+  const typeLabels = {
+    hero: 'Hero image – EYFS core execution',
+    montessori: 'Montessori adaptation image',
+    forest: 'Forest School adaptation image',
+    reggio: 'Reggio Emilia adaptation image',
+    steiner: 'Steiner / Waldorf adaptation image'
+  };
+
+  const ageLabels = {
+    '12-24m': '12 to 24 months',
+    '2-3yrs': '2 to 3 years',
+    '3-4yrs': '3 to 4 years',
+    'mixed': 'mixed age 1 to 4 years'
+  };
+
+  const templateDesc = {
+    A: 'Template A – Tabletop Activity: children seated at a child-height table, materials spread realistically, natural mid-process interaction.',
+    B: 'Template B – Floor-Based Exploration: activity on a floor mat or low surface, open spatial framing, movement visible.',
+    C: 'Template C – Outdoor Natural Context: uneven natural ground, real weather conditions implied, layered clothing appropriate for UK outdoors, environmental depth visible.',
+    D: 'Template D – Material Focus: no children present, focus on material setup with clear environmental context, slightly closer framing.'
+  };
+
+  const ethosContext = {
+    hero: 'Standard EYFS nursery or childminder room. Child-height wooden furniture. Realistic UK early years environment. No ethos styling.',
+    montessori: 'Montessori-styled environment: low open wooden shelving, natural materials, muted earth tones, child-sized proportioned furniture. No plastic clutter. Calm, ordered space.',
+    forest: 'Forest School outdoor context: natural woodland or garden setting, uneven ground, mud, natural light filtered through trees or open sky. Children in waterproofs or wellies appropriate to UK weather.',
+    reggio: 'Reggio Emilia-inspired environment: light-filled space, natural and transparent materials, documentation visible on walls, loose parts available, sense of provocation and exploration.',
+    steiner: 'Steiner/Waldorf-influenced setting: natural wooden and fabric materials, no plastic, soft natural colours, beeswax crayons or natural paints, handmade aesthetic, warm light.'
+  };
+
+  const childStr = children
+    ? `Children aged ${ageLabels[age]} are present. They display developmentally appropriate grip and posture for this age. Natural diversity without staged tokenism — realistic varied skin tones, everyday non-matching UK children's clothing. No direct camera eye contact. No posed or mirrored expressions. Genuine natural engagement mid-activity. Natural skin texture — no airbrushing. No identical hand positions.`
+    : `No children present. Focus is on the activity materials and setting only.`;
+
+  return `Photorealistic documentary-style photograph. NOT illustrated. NOT CGI. NOT stylised.
+
+IMAGE TYPE: ${typeLabels[type]}
+
+ACTIVITY: ${activity}
+
+MATERIALS: ${materials}
+
+SCENE: ${templateDesc[template]}
+
+ENVIRONMENT: ${ethosContext[type]} Realistic UK early years setting. Avoid showroom perfection, sterile minimalism, influencer-style styling, luxury curated toy displays, or design-magazine composition.
+
+CHILDREN: ${childStr}
+
+CAMERA: Child eye-level (approximately 90–100cm from floor). 35mm full-frame lens equivalent. Slight off-axis angle (10–15 degrees from straight-on). No ultra-wide distortion. No telephoto compression. Full environmental context visible in frame.
+
+DEPTH OF FIELD: Moderate. Subject and materials in clear focus. Background legible but softly resolved. No extreme bokeh. No portrait-mode cutout edges.
+
+LIGHTING: Single natural light source — window to one side. Soft directional shadows. No overhead spotlight. No multi-direction studio fill. No hard-edged shadows. Slight warmth — not orange. Muted contrast. No blown highlights.
+
+GRAIN & FINISH: Fine organic analogue film grain evenly distributed. Subtle reduction in digital micro-contrast. Barely perceptible natural vignette at frame edges. No hyper-sharp edge definition. No digital gloss.
+
+MATERIALS BEHAVIOUR: Materials appear physically believable. Matte surface rendering. Reduced specular highlights on plastic. At least one minor imperfection visible — paper curl, paint smudge, fabric crease, wood grain irregularity, or uneven crayon pressure.
+
+ANTI-DIGITAL: No bilateral symmetry in subject placement. No excessively saturated primary colours. No airbrushed smooth skin. No compositing artefacts. No CGI sheen. No hyper-clean surfaces. No edge-to-edge sharpness. No unrealistically perfect lighting balance.
+
+Aspect ratio: 16:9 landscape. Full environmental frame.`;
+}
+
+// ── Generate ──
+async function generate() {
+  const key = document.getElementById('api-key').value.trim();
+  if (!key || !key.startsWith('sk-')) {
+    showError('Please enter a valid OpenAI API key (starts with "sk-").');
+    return;
+  }
+
+  hideError();
+  currentImageUrl = null;
+  resetQC();
+
+  document.getElementById('gen-btn').disabled = true;
+  document.getElementById('btn-regen').disabled = true;
+  document.getElementById('btn-dl').disabled = true;
+
+  const imageArea = document.getElementById('image-area');
+  imageArea.innerHTML = `<div class="spinner-wrap"><div class="spinner"></div><p>Generating with DALL·E 3 HD — usually 20–40 seconds…</p></div>`;
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        model: 'dall-e-3',
+        prompt: buildPrompt(),
+        n: 1,
+        size: '1792x1024',
+        quality: 'hd',
+        style: 'natural',
+        response_format: 'b64_json'
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || `OpenAI error ${response.status}`);
+
+    const b64 = data.data?.[0]?.b64_json;
+    if (!b64) throw new Error('No image data returned.');
+
+    currentImageUrl = `data:image/png;base64,${b64}`;
+    imageArea.innerHTML = `<img src="${currentImageUrl}" alt="Generated FloPo activity image">`;
+
+    document.getElementById('btn-dl').disabled = false;
+    activateQC();
+
+  } catch (err) {
+    imageArea.innerHTML = `<div class="img-placeholder"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><p>Generation failed</p></div>`;
+    showError(`Error: ${err.message}`);
+  } finally {
+    document.getElementById('gen-btn').disabled = false;
+    document.getElementById('btn-regen').disabled = false;
+  }
+}
+
+// ── QC ──
+function getVisibleQCIds() {
+  return QC_IDS.filter(id => {
+    const el = document.getElementById(id);
+    return el && el.style.display !== 'none' && !isParentHidden(el);
+  });
+}
+
+function isParentHidden(el) {
+  let p = el.parentElement;
+  while (p) {
+    if (p.style.display === 'none') return true;
+    p = p.parentElement;
+  }
+  return false;
+}
+
+function resetQC() {
+  qcStates = {};
+  QC_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    qcStates[id] = 'pending';
+    el.className = 'qc-item pending';
+    el.querySelector('.qc-icon').className = 'qc-icon pending';
+    el.querySelector('.qc-icon').textContent = '–';
+    const feedback = el.querySelector('.qc-feedback');
+    if (feedback) feedback.remove();
+    el.querySelector('.qc-toggle-btn').disabled = true;
+  });
+  document.getElementById('qc-badge').className = 'qc-badge badge-pending';
+  document.getElementById('qc-badge').textContent = 'Awaiting image';
+  document.getElementById('qc-note').textContent = 'Generate an image to activate the checklist. Manually review each item and mark pass or fail.';
+  document.getElementById('btn-approve').disabled = true;
+  document.getElementById('btn-approve').classList.remove('ready');
+  document.getElementById('btn-discard').disabled = true;
+  document.getElementById('btn-discard').classList.remove('ready');
+  document.getElementById('verdict-text').textContent = 'Complete QC review to unlock approval';
+}
+
+function activateQC() {
+  onParamChange(); // ensure visibility is current
+  QC_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.querySelector('.qc-toggle-btn').disabled = false;
+  });
+  document.getElementById('qc-note').textContent = 'Review each item in the image above, then mark each check as Pass or Fail. "Fail" on 2+ items → discard and regenerate.';
+  updateQCSummary();
+}
+
+function cycleQC(id) {
+  const current = qcStates[id] || 'pending';
+  const next = current === 'pending' ? 'pass' : current === 'pass' ? 'fail' : 'pass';
+  qcStates[id] = next;
+
+  const el = document.getElementById(id);
+  el.className = `qc-item ${next}`;
+
+  const icon = el.querySelector('.qc-icon');
+  icon.className = `qc-icon ${next}`;
+  icon.textContent = next === 'pass' ? '✓' : next === 'fail' ? '✕' : '–';
+
+  // Update feedback
+  let feedback = el.querySelector('.qc-feedback');
+  if (!feedback) {
+    feedback = document.createElement('div');
+    feedback.className = 'qc-feedback';
+    el.querySelector('.qc-text').appendChild(feedback);
+  }
+
+  const btn = el.querySelector('.qc-toggle-btn');
+
+  if (next === 'pass') {
+    feedback.className = 'qc-feedback pass';
+    feedback.textContent = 'Passed — spec met.';
+    btn.textContent = 'Mark fail';
+  } else if (next === 'fail') {
+    feedback.className = 'qc-feedback fail';
+    feedback.textContent = 'Failed — consider regenerating if 2+ items fail.';
+    btn.textContent = 'Clear';
+  } else {
+    feedback.remove();
+    btn.textContent = 'Mark';
+  }
+
+  updateQCSummary();
+}
+
+function updateQCSummary() {
+  const visible = getVisibleQCIds();
+  const passes = visible.filter(id => qcStates[id] === 'pass').length;
+  const fails = visible.filter(id => qcStates[id] === 'fail').length;
+  const pending = visible.filter(id => qcStates[id] === 'pending').length;
+  const total = visible.length;
+  const reviewed = passes + fails;
+
+  const badge = document.getElementById('qc-badge');
+  const verdict = document.getElementById('verdict-text');
+  const btnApprove = document.getElementById('btn-approve');
+  const btnDiscard = document.getElementById('btn-discard');
+
+  if (!currentImageUrl) return;
+
+  if (pending > 0) {
+    badge.className = 'qc-badge badge-pending';
+    badge.textContent = `${reviewed}/${total} reviewed`;
+    verdict.textContent = `${pending} item${pending !== 1 ? 's' : ''} still to review`;
+    btnApprove.disabled = true; btnApprove.classList.remove('ready');
+    btnDiscard.disabled = true; btnDiscard.classList.remove('ready');
+    return;
+  }
+
+  // All reviewed
+  btnDiscard.disabled = false; btnDiscard.classList.add('ready');
+
+  if (fails === 0) {
+    badge.className = 'qc-badge badge-pass';
+    badge.textContent = `✓ All ${total} checks passed`;
+    verdict.textContent = 'All checks passed — ready to approve.';
+    btnApprove.disabled = false; btnApprove.classList.add('ready');
+  } else if (fails === 1) {
+    badge.className = 'qc-badge badge-warn';
+    badge.textContent = `⚠ 1 check failed`;
+    verdict.textContent = 'Minor issue — use judgement on whether to approve or regenerate.';
+    btnApprove.disabled = false; btnApprove.classList.add('ready');
+  } else {
+    badge.className = 'qc-badge badge-fail';
+    badge.textContent = `✕ ${fails} checks failed`;
+    verdict.textContent = `${fails} failures — discard and regenerate per style guide §12.`;
+    btnApprove.disabled = true; btnApprove.classList.remove('ready');
+  }
+}
+
+function approveImage() {
+  downloadImage();
+}
+
+function discardImage() {
+  generate();
+}
+
+function downloadImage() {
+  if (!currentImageUrl) return;
+  const type = getSelected('toggle-type');
+  const age = getSelected('toggle-age');
+  const filename = `flopo-${type}-${age}-${Date.now()}.png`;
+  const a = document.createElement('a');
+  a.href = currentImageUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideError() {
+  document.getElementById('error-msg').style.display = 'none';
+}
+
+document.getElementById('api-key').addEventListener('keydown', e => {
+  if (e.key === 'Enter') generate();
+});
+
+resetQC();
+</script>
+</body>
+</html>
