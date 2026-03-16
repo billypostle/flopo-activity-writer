@@ -3,6 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=20260306-2">
+  <link rel="shortcut icon" href="/favicon.ico?v=20260306-2">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=20260306-2">
+  <link rel="apple-touch-icon-precomposed" sizes="180x180" href="/apple-touch-icon-precomposed.png?v=20260306-2">
   <title>FloPo Activity Writer</title>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap");
@@ -29,7 +33,21 @@
     .primary { background: #D2FFFF; color:#203427; }
     .secondary { background: #F2F2F2; color:#203427; }
     .mono { white-space: pre-wrap; font-family: Consolas, monospace; font-size: .9rem; background:#f2efe6; border: var(--border); border-radius: 8px; padding: 10px; margin-top:12px; max-height: 300px; overflow:auto; }
-    .sections { margin-top: 14px; border: var(--border); border-radius: 10px; background:#fff; max-height: 520px; overflow:auto; }
+    #report { display: none; margin-top: 12px; }
+    #report.is-visible { display: block; }
+    .report-list { display: grid; gap: 10px; }
+    .report-item {
+      background: #fffaf2;
+      border: var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .report-item h3 { margin: 0 0 6px; font-size: 1rem; }
+    .report-item p { margin: 0; color: #364236; font-size: .92rem; line-height: 1.4; }
+    .report-item ul { margin: 8px 0 0; padding-left: 18px; }
+    .report-item li { margin: 4px 0; line-height: 1.4; }
+    .sections { display: none; margin-top: 14px; border: var(--border); border-radius: 10px; background:#fff; max-height: 520px; overflow:auto; }
+    .sections.is-visible { display: block; }
     .section { padding: 12px 14px; border-bottom: 1.5px solid #ece6d8; }
     .section:last-child { border-bottom: none; }
     .section h3 { margin: 0 0 8px; font-size: 1rem; }
@@ -49,7 +67,7 @@
         <button class="secondary" id="notionBtn">Push To Notion</button>
       </div>
       <div id="status" class="muted" style="margin-top:10px;"></div>
-      <div id="report" class="mono"></div>
+      <div id="report"></div>
       <div id="sections" class="sections"></div>
     </div>
   </div>
@@ -119,6 +137,7 @@
     function renderSections(activityDraft) {
       const container = byId("sections");
       container.innerHTML = "";
+      container.classList.remove("is-visible");
       if (!activityDraft) return;
       Object.entries(activityDraft).forEach(([title, value]) => {
         const section = document.createElement("section");
@@ -131,6 +150,109 @@
         section.appendChild(p);
         container.appendChild(section);
       });
+      if (container.childElementCount) {
+        container.classList.add("is-visible");
+      }
+    }
+
+    function clearReport() {
+      const report = byId("report");
+      report.innerHTML = "";
+      report.classList.remove("is-visible");
+    }
+
+    function renderReport(items) {
+      const report = byId("report");
+      if (!items.length) {
+        clearReport();
+        return;
+      }
+
+      report.innerHTML = "";
+      const list = document.createElement("div");
+      list.className = "report-list";
+
+      items.forEach((item) => {
+        const card = document.createElement("section");
+        card.className = "report-item";
+
+        const title = document.createElement("h3");
+        title.textContent = item.title;
+        card.appendChild(title);
+
+        if (item.body) {
+          const body = document.createElement("p");
+          body.textContent = item.body;
+          card.appendChild(body);
+        }
+
+        if (item.issues?.length) {
+          const issues = document.createElement("ul");
+          item.issues.forEach((issue) => {
+            const li = document.createElement("li");
+            li.textContent = issue;
+            issues.appendChild(li);
+          });
+          card.appendChild(issues);
+        }
+
+        list.appendChild(card);
+      });
+
+      report.appendChild(list);
+      report.classList.add("is-visible");
+    }
+
+    function normalizeIssueList(value) {
+      if (!value) return [];
+      if (Array.isArray(value)) return value.filter(Boolean);
+      if (typeof value !== "string") return [String(value)];
+      const trimmed = value.trim();
+      if (!trimmed) return [];
+      if (trimmed.includes("\n")) {
+        return trimmed.split("\n").map((line) => line.trim()).filter(Boolean);
+      }
+      return [trimmed];
+    }
+
+    function buildGenerationReportItems(data) {
+      const validation = data.validation_report || {};
+      const blockingIssues = normalizeIssueList(validation.blocking_issues);
+      const warnings = normalizeIssueList(validation.warnings);
+      const qcIssues = normalizeIssueList(data.qc_issues);
+      const qcError = normalizeIssueList(data.qc_error);
+      const items = [];
+
+      if (blockingIssues.length) {
+        items.push({
+          title: "Blocking Validation Issues",
+          body: "These fields still need fixes before the draft fully passes validation.",
+          issues: blockingIssues
+        });
+      }
+      if (warnings.length) {
+        items.push({
+          title: "Validation Warnings",
+          body: "Review these warnings before publishing.",
+          issues: warnings
+        });
+      }
+      if (qcIssues.length) {
+        items.push({
+          title: "QC Issues",
+          body: "The QC pass flagged the following items.",
+          issues: qcIssues
+        });
+      }
+      if (qcError.length) {
+        items.push({
+          title: "QC Error",
+          body: "The QC helper encountered an error; the draft was returned fail-open.",
+          issues: qcError
+        });
+      }
+
+      return items;
     }
 
     async function callApi(path, payload) {
@@ -147,6 +269,7 @@
     }
 
     byId("generateBtn").addEventListener("click", async () => {
+      clearReport();
       const stopTicker = startGenerationTicker();
       try {
         const payload = {
@@ -157,19 +280,16 @@
         latestDraft = data.activity_draft;
         const qcStatus = data.qc_applied ? "passed" : "fail-open";
         byId("status").textContent = `Generated. Rewrites: ${data.rewrite_count}. Passed: ${data.validation_report.passed}. QC: ${qcStatus}`;
-        byId("report").textContent = JSON.stringify({
-          validation_report: data.validation_report,
-          qc_applied: data.qc_applied,
-          qc_passed: data.qc_passed,
-          qc_edited_fields: data.qc_edited_fields,
-          qc_issues: data.qc_issues,
-          qc_error: data.qc_error
-        }, null, 2);
+        renderReport(buildGenerationReportItems(data));
         renderSections(data.activity_draft);
       } catch (err) {
         stopTicker();
         byId("status").textContent = "Generation failed.";
-        byId("report").textContent = err.message;
+        renderReport([{
+          title: "Generation Error",
+          body: "The draft could not be generated.",
+          issues: normalizeIssueList(err.message)
+        }]);
         byId("sections").innerHTML = "";
       }
     });

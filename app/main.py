@@ -61,6 +61,15 @@ app.add_middleware(
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+PUBLIC_ICON_PATHS = {
+    "/favicon.ico",
+    "/favicon.png",
+    "/apple-touch-icon.png",
+    "/apple-touch-icon-precomposed.png",
+    "/static/favicon.png",
+    "/static/webclip.png",
+}
+
 
 def _set_generation_status(app_obj: FastAPI, message: str, *, active: bool) -> None:
     app_obj.state.generation_status = {
@@ -102,9 +111,10 @@ def _is_authenticated(request: Request) -> bool:
 async def security_and_auth_middleware(request: Request, call_next):
     path = request.url.path
     is_health = path == "/healthz"
+    is_public_icon = path in PUBLIC_ICON_PATHS
     is_preflight = request.method.upper() == "OPTIONS"
 
-    if not is_health and not is_preflight:
+    if not is_health and not is_public_icon and not is_preflight:
         creds_configured = bool(config.APP_AUTH_USERNAME and config.APP_AUTH_PASSWORD)
         if config.ENVIRONMENT == "production" and not creds_configured:
             return JSONResponse(
@@ -130,6 +140,26 @@ def healthz() -> dict:
 @app.get("/")
 def home() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon_ico() -> FileResponse:
+    return FileResponse(STATIC_DIR / "favicon.png", media_type="image/png")
+
+
+@app.get("/favicon.png", include_in_schema=False)
+def favicon_png() -> FileResponse:
+    return FileResponse(STATIC_DIR / "favicon.png", media_type="image/png")
+
+
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+def apple_touch_icon() -> FileResponse:
+    return FileResponse(STATIC_DIR / "webclip.png", media_type="image/png")
+
+
+@app.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+def apple_touch_icon_precomposed() -> FileResponse:
+    return FileResponse(STATIC_DIR / "webclip.png", media_type="image/png")
 
 
 @app.get("/api/resources")
