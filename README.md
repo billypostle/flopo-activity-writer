@@ -85,11 +85,89 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
 At app startup, Notion config is verified against `GET /v1/databases/{NOTION_DATABASE_ID}`.
 If verification fails, `/api/notion/create-draft` returns a clear startup verification error.
 
+## Generation workflow (end-to-end)
+`POST /api/generate-draft` runs a fixed pipeline in `app/generator.py`:
+
+1. Load canonical content field order from CSV via `content_fields_from_csv()`.
+2. Load the authoritative Notion Model Spec via `load_model_spec_only()`.
+3. Build initial system/user prompts using notes + Model Spec only.
+4. Generate initial JSON draft with `OPENAI_MODEL`.
+5. Normalize keys to canonical field labels.
+6. Run deterministic validation (`validate_draft`).
+7. If validation fails, run targeted rewrite loops (up to `MAX_REWRITE_ATTEMPTS`, default `3`).
+8. Run an always-on QC editor pass with `OPENAI_QC_MODEL`.
+9. Merge only allowed QC field edits.
+10. Re-run deterministic validation after QC merge.
+11. Return draft + validation + rewrite/QC metadata.
+
+Status messages are exposed throughout this process via `GET /api/generation-status`.
+
+## Validation framework
+Validation is deterministic and implemented in `app/validators.py`. It returns:
+- `passed`: overall gate result.
+- `blocking_issues`: must be resolved for pass.
+- `warnings`: non-blocking quality flags.
+
+Blocking checks:
+- Activity title quality and format.
+- Required section completeness (except explicitly allowed empty fields).
+- Exact section order lock against canonical CSV order.
+- Summary and preview presence/shape checks.
+- Preview quality checks:
+  - no meta-preview language,
+  - explicit scene actors,
+  - concrete activity detail,
+  - no procedural over-disclosure.
+- Ethos adaptation depth checks, including Reggio environment change requirement.
+- EYFS and safety sufficiency checks (specificity and minimum depth).
+
+Warning checks:
+- Potential procedural leakage in Summary/Preview.
+- Banned phrase/style drift and passive voice overuse threshold.
+
+## QC editor behavior
+The QC pass is a second model call designed for targeted patching, not full rewrite.
+
+Rules enforced by implementation:
+- QC response must match required JSON schema (`pass`, `issues`, `fields_to_edit`, `revised_fields`, `editor_notes`, `spec_version`).
+- Edited fields must be in the allowed field list.
+- `revised_fields` outside `fields_to_edit` are ignored and logged as QC issues.
+- Empty edits are rejected for required fields.
+- QC edits are accepted only if they do not increase deterministic blocking issues.
+
+Fail-open behavior:
+- If QC call fails (network, parse, schema), API still returns first-pass draft.
+- In fail-open, `qc_applied=false` and `qc_error` is populated.
+
+## API QC/validation response contract
+`POST /api/generate-draft` returns:
+- `validation_report`: `{ passed, blocking_issues, warnings }`
+- `rewrite_count`: number of rewrite loops executed.
+- `qc_applied`: whether QC stage executed with a parseable payload.
+- `qc_passed`: whether QC marked pass and final merged draft passed deterministic validation.
+- `qc_edited_fields`: exact fields changed by QC merge.
+- `qc_issues`: QC issue list (including ignored/discarded edit reasons).
+- `qc_error`: fail-open diagnostic string when QC could not be applied.
+
+## Operational QC checklist
+Use this checklist before creating a Notion draft:
+
+1. Confirm `validation_report.passed` is `true`.
+2. If `qc_applied=false`, review `qc_error` and inspect high-risk sections manually (Preview, Safety, EYFS, Ethos).
+3. If `qc_edited_fields` is non-empty, spot-check those fields for tone and factual alignment.
+4. If any blocking issues remain, do not publish or sync to final CMS content.
+5. Treat warnings as editorial follow-up, especially procedural leakage warnings.
+
 ## Testing
 - `python -m pytest`
+- Key suites for workflow/validation/QC:
+  - `tests/test_pipeline_integration.py`
+  - `tests/test_validators.py`
+  - `tests/test_generator_qc.py`
 
 ## Notes
 - Content fields are derived from `Databases/FloPo - Activities - 698734a9856055bb42014e7a (1).csv`.
 - Themes, age adaptations, materials, and context are inferred by the model from notes + guidance docs.
 - `/api/generate-draft` injects only the Model Spec at runtime (not multi-doc skill guide context).
 - QC pass fail-open behavior: if the second-pass QC call fails (request/parse/schema), the API returns the first-pass draft with QC metadata (`qc_applied=false`, `qc_error` populated).
+- Extended runbook: `Documentation/Activity Writer Workflow, Validation and QC.md`.
