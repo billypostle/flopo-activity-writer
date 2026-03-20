@@ -9,13 +9,16 @@ from typing import Any
 from .config import (
     ACTIVITIES_CSV_PATH,
     CSV_INTERNAL_COLUMNS,
+    ETHOS_MASTER_DOC,
+    ETHOS_SKILL_DOCS_DIR,
     INCLUDED_SKILL_DOCS,
+    INCLUDED_ETHOS_SKILL_DOCS,
     NOTION_SKILL_DOCS_CONFIG_PATH,
     NOTION_SKILL_DOCS_MODE,
     SKILL_DOCS_DIR,
     THEMES_CSV_PATH,
 )
-from .notion_client import fetch_notion_page_markdown
+from .notion_client import fetch_notion_child_page_refs, fetch_notion_page_markdown
 from .spec_manager import get_model_spec
 
 
@@ -40,11 +43,22 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
+def _resolve_local_skill_doc_path(filename: str) -> Path:
+    candidates = [
+        SKILL_DOCS_DIR / filename,
+        ETHOS_SKILL_DOCS_DIR / filename,
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
 def _local_skill_docs(doc_names: list[str] | None = None) -> dict[str, str]:
     docs: dict[str, str] = {}
     selected_docs = doc_names or INCLUDED_SKILL_DOCS
     for filename in selected_docs:
-        full_path = SKILL_DOCS_DIR / filename
+        full_path = _resolve_local_skill_doc_path(filename)
         docs[filename] = read_text(full_path) if full_path.exists() else ""
     return docs
 
@@ -117,6 +131,51 @@ def load_skill_docs() -> dict[str, str]:
         raise RuntimeError("Notion skill doc loading failed:\n- " + "\n- ".join(errors))
 
     return output
+
+
+def _local_runtime_ethos_docs() -> dict[str, str]:
+    return _local_skill_docs([ETHOS_MASTER_DOC, *INCLUDED_ETHOS_SKILL_DOCS])
+
+
+def load_runtime_ethos_skill_docs() -> dict[str, str]:
+    refs = _load_notion_skill_doc_refs()
+    mode = (NOTION_SKILL_DOCS_MODE or "live_with_fallback").strip().lower()
+    if mode not in {"local", "live", "live_with_fallback"}:
+        raise RuntimeError(
+            "Invalid NOTION_SKILL_DOCS_MODE. Expected one of: local, live, live_with_fallback."
+        )
+
+    local_docs = _local_runtime_ethos_docs()
+    if mode == "local":
+        return {name: text for name, text in local_docs.items() if text.strip()}
+
+    output = dict(local_docs) if mode == "live_with_fallback" else {}
+    master_ref = refs.get(normalize_label(ETHOS_MASTER_DOC), "")
+    errors: list[str] = []
+
+    if not master_ref:
+        if mode == "live":
+            raise RuntimeError(f"Missing Notion page reference for skill doc: {ETHOS_MASTER_DOC}")
+        return {name: text for name, text in output.items() if text.strip()}
+
+    try:
+        master_content = fetch_notion_page_markdown(master_ref)
+        if master_content.strip():
+            output[ETHOS_MASTER_DOC] = master_content
+
+        child_refs = fetch_notion_child_page_refs(master_ref)
+        for title, ref in child_refs.items():
+            child_content = fetch_notion_page_markdown(ref)
+            if child_content.strip():
+                output[normalize_label(title)] = child_content
+    except Exception as exc:
+        if mode == "live":
+            errors.append(f"Failed loading runtime ethos skill docs from Notion: {exc}")
+
+    if mode == "live" and errors:
+        raise RuntimeError("Notion skill doc loading failed:\n- " + "\n- ".join(errors))
+
+    return {name: text for name, text in output.items() if str(text).strip()}
 
 
 def load_model_spec_only() -> dict[str, Any]:

@@ -9,7 +9,7 @@ import requests
 
 from .config import ALLOWED_EMPTY_FIELDS, MAX_REWRITE_ATTEMPTS, OPENAI_API_KEY, OPENAI_MODEL, OPENAI_QC_MODEL
 from .models import GenerateDraftRequest, QCReport, ValidationReport
-from .resources import load_model_spec_only, normalize_label
+from .resources import load_model_spec_only, load_runtime_ethos_skill_docs, normalize_label
 from .validators import validate_draft
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
@@ -144,11 +144,32 @@ def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
     return max(1, total_chars // 4)
 
 
-def _system_prompt(model_spec: dict[str, Any], content_fields: list[str]) -> str:
+def _ethos_skill_docs_prompt(ethos_skill_docs: dict[str, str]) -> str:
+    sections: list[str] = []
+    for name, text in ethos_skill_docs.items():
+        clean = str(text or "").strip()
+        if clean:
+            sections.append(f"## {name}\n{clean}")
+    if not sections:
+        return ""
+    return (
+        "Runtime ethos skill docs (prefer these Notion-backed docs for ethos adaptation "
+        "content; local files are fallback only):\n"
+        + "\n\n".join(sections)
+    )
+
+
+def _system_prompt(
+    model_spec: dict[str, Any],
+    content_fields: list[str],
+    ethos_skill_docs: dict[str, str],
+) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
     spec_text = str(model_spec.get("spec_text", "")).strip()
     if not spec_version or not spec_text:
         raise RuntimeError("Model spec is incomplete. Expected spec_version and non-empty spec_text.")
+    ethos_docs_text = _ethos_skill_docs_prompt(ethos_skill_docs)
+    ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
     return (
         "You are a specialist FloPo activity writer. "
         "Generate content that strictly follows the Model Spec. "
@@ -172,6 +193,7 @@ def _system_prompt(model_spec: dict[str, Any], content_fields: list[str]) -> str
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{ethos_section}"
     )
 
 
@@ -190,9 +212,12 @@ def _rewrite_prompt(
     issues: list[str],
     content_fields: list[str],
     model_spec: dict[str, Any],
+    ethos_skill_docs: dict[str, str],
 ) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
     spec_text = str(model_spec.get("spec_text", "")).strip()
+    ethos_docs_text = _ethos_skill_docs_prompt(ethos_skill_docs)
+    ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
     return (
         "Rewrite the activity JSON to resolve only the blocking issues below while preserving all fields.\n"
         f"Issues:\n- " + "\n- ".join(issues) + "\n\n"
@@ -204,7 +229,8 @@ def _rewrite_prompt(
         "- Include explicit scene actors (children/adults) and concrete materials/actions.\n\n"
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
-        f"{spec_text}\n\n"
+        f"{spec_text}"
+        f"{ethos_section}\n\n"
         "Return strict JSON only with exactly these keys:\n"
         f"{_field_schema_prompt(content_fields)}\n\n"
         "Current draft JSON:\n"
@@ -212,9 +238,15 @@ def _rewrite_prompt(
     )
 
 
-def _qc_system_prompt(model_spec: dict[str, Any], content_fields: list[str]) -> str:
+def _qc_system_prompt(
+    model_spec: dict[str, Any],
+    content_fields: list[str],
+    ethos_skill_docs: dict[str, str],
+) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
     spec_text = str(model_spec.get("spec_text", "")).strip()
+    ethos_docs_text = _ethos_skill_docs_prompt(ethos_skill_docs)
+    ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
     return (
         "You are FloPo QC Editor, a strict validating editor. "
         "Your task is to review the provided draft against the Model Spec and output only targeted fixes.\n\n"
@@ -247,7 +279,8 @@ def _qc_system_prompt(model_spec: dict[str, Any], content_fields: list[str]) -> 
         "}\n\n"
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
-        f"{spec_text}\n\n"
+        f"{spec_text}"
+        f"{ethos_section}\n\n"
         "Allowed fields:\n"
         f"{json.dumps(content_fields, ensure_ascii=False)}"
     )
@@ -282,6 +315,7 @@ def _normalize_field_keys(draft: dict[str, Any], content_fields: list[str]) -> d
 def _run_qc_editor_pass(
     draft: dict[str, str],
     model_spec: dict[str, Any],
+    ethos_skill_docs: dict[str, str],
     content_fields: list[str],
     pre_qc_report: ValidationReport,
     on_status: Callable[[str], None] | None = None,
@@ -290,7 +324,7 @@ def _run_qc_editor_pass(
         if on_status:
             on_status(message)
 
-    qc_system = _qc_system_prompt(model_spec, content_fields)
+    qc_system = _qc_system_prompt(model_spec, content_fields, ethos_skill_docs)
     qc_user = _qc_user_prompt(draft, content_fields, model_spec)
     logger.info(
         "Estimated prompt tokens (qc editor): %s",
@@ -434,11 +468,13 @@ def generate_activity_draft(
     update_status("Loading model spec")
     model_spec = load_model_spec_only()
     update_status(f"Model spec ready (v{model_spec.get('spec_version', '')})")
+    update_status("Loading runtime ethos skill docs")
+    ethos_skill_docs = load_runtime_ethos_skill_docs()
     update_status("Preparing content fields")
     content_fields = [normalize_label(f) for f in content_fields]
 
     update_status("Building prompts")
-    system_prompt = _system_prompt(model_spec, content_fields)
+    system_prompt = _system_prompt(model_spec, content_fields, ethos_skill_docs)
     user_prompt = _user_prompt(request, model_spec)
     initial_messages = [
         {"role": "system", "content": system_prompt},
@@ -460,7 +496,9 @@ def generate_activity_draft(
     while not report.passed and rewrite_count < MAX_REWRITE_ATTEMPTS:
         rewrite_count += 1
         update_status(f"Rewriting draft (attempt {rewrite_count}/{MAX_REWRITE_ATTEMPTS})")
-        rewrite_user = _rewrite_prompt(draft, report.blocking_issues, content_fields, model_spec)
+        rewrite_user = _rewrite_prompt(
+            draft, report.blocking_issues, content_fields, model_spec, ethos_skill_docs
+        )
         rewrite_messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": rewrite_user},
@@ -483,6 +521,7 @@ def generate_activity_draft(
     draft, qc_report = _run_qc_editor_pass(
         draft,
         model_spec,
+        ethos_skill_docs,
         content_fields,
         report,
         on_status=update_status,

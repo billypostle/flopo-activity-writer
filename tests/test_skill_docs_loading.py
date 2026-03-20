@@ -95,3 +95,61 @@ def test_load_skill_docs_includes_extra_docs_from_notion_config(monkeypatch):
     assert "Writing guide.md" in docs
     assert extra_doc in docs
     assert docs[extra_doc] == "content::https://www.notion.so/extra"
+
+
+def test_load_runtime_ethos_skill_docs_uses_master_and_child_pages(monkeypatch):
+    monkeypatch.setattr(resources, "NOTION_SKILL_DOCS_MODE", "live")
+    monkeypatch.setattr(resources, "_local_runtime_ethos_docs", lambda: {})
+    monkeypatch.setattr(
+        resources,
+        "_load_notion_skill_doc_refs",
+        lambda: {"Ethos Definitions.md": "https://www.notion.so/ethos-master"},
+    )
+    monkeypatch.setattr(
+        resources,
+        "fetch_notion_child_page_refs",
+        lambda _ref: {
+            "Montessori Ethos Skill Doc": "https://www.notion.so/montessori",
+            "Forest School Ethos Skill Doc": "https://www.notion.so/forest",
+        },
+    )
+
+    fetched: list[str] = []
+
+    def _fetch(ref: str) -> str:
+        fetched.append(ref)
+        return f"content::{ref}"
+
+    monkeypatch.setattr(resources, "fetch_notion_page_markdown", _fetch)
+
+    docs = resources.load_runtime_ethos_skill_docs()
+
+    assert docs["Ethos Definitions.md"] == "content::https://www.notion.so/ethos-master"
+    assert docs["Montessori Ethos Skill Doc"] == "content::https://www.notion.so/montessori"
+    assert docs["Forest School Ethos Skill Doc"] == "content::https://www.notion.so/forest"
+    assert fetched == [
+        "https://www.notion.so/ethos-master",
+        "https://www.notion.so/montessori",
+        "https://www.notion.so/forest",
+    ]
+
+
+def test_load_runtime_ethos_skill_docs_live_with_fallback_returns_local(monkeypatch):
+    monkeypatch.setattr(resources, "NOTION_SKILL_DOCS_MODE", "live_with_fallback")
+    monkeypatch.setattr(
+        resources,
+        "_local_runtime_ethos_docs",
+        lambda: {"Ethos Definitions.md": "local master", "montessori.md": "local montessori"},
+    )
+    monkeypatch.setattr(
+        resources,
+        "_load_notion_skill_doc_refs",
+        lambda: {"Ethos Definitions.md": "https://www.notion.so/ethos-master"},
+    )
+    monkeypatch.setattr(resources, "fetch_notion_page_markdown", lambda _ref: (_ for _ in ()).throw(RuntimeError("network error")))
+    monkeypatch.setattr(resources, "fetch_notion_child_page_refs", lambda _ref: {})
+
+    docs = resources.load_runtime_ethos_skill_docs()
+
+    assert docs["Ethos Definitions.md"] == "local master"
+    assert docs["montessori.md"] == "local montessori"

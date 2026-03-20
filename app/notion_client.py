@@ -99,6 +99,26 @@ def _fetch_block_children(block_id: str) -> list[dict[str, Any]]:
     return items
 
 
+def _collect_child_page_refs(blocks: list[dict[str, Any]]) -> dict[str, str]:
+    refs: dict[str, str] = {}
+    for block in blocks:
+        block_type = str(block.get("type", ""))
+        payload = block.get(block_type, {}) if isinstance(block.get(block_type), dict) else {}
+        if block_type == "child_page":
+            title = str(payload.get("title", "")).strip()
+            block_id = str(block.get("id", "")).strip()
+            if title and block_id and title not in refs:
+                refs[title] = block_id
+
+        if block.get("has_children"):
+            child_id = str(block.get("id", "")).strip()
+            if child_id:
+                nested_blocks = _fetch_block_children(child_id)
+                refs.update(_collect_child_page_refs(nested_blocks))
+
+    return refs
+
+
 def _extract_plain_text_from_rich_text(rich_text: list[dict[str, Any]]) -> str:
     return "".join(str(item.get("plain_text", "")) for item in rich_text).strip()
 
@@ -180,6 +200,16 @@ def fetch_notion_page_markdown(page_ref: str) -> str:
     for block in root_blocks:
         lines.extend(_render_block_lines(block))
     return "\n".join(lines).strip()
+
+
+def fetch_notion_child_page_refs(page_ref: str) -> dict[str, str]:
+    page_id = _parse_notion_page_id(page_ref)
+    _request_notion_json(
+        f"{NOTION_BASE_URL}/pages/{page_id}",
+        timeout=NOTION_SKILL_DOCS_REQUEST_TIMEOUT_SECONDS,
+    )
+    root_blocks = _fetch_block_children(page_id)
+    return _collect_child_page_refs(root_blocks)
 
 
 def validate_notion_configuration() -> tuple[bool, str]:

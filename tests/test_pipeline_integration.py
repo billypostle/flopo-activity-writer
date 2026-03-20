@@ -48,6 +48,10 @@ def test_generate_validate_and_save_pipeline(monkeypatch, tmp_path):
             "source": "https://www.notion.so/spec",
         },
     )
+    monkeypatch.setattr(
+        "app.generator.load_runtime_ethos_skill_docs",
+        lambda: {"Ethos Definitions.md": "runtime ethos guidance"},
+    )
 
     def fake_openai_chat(_messages, **kwargs):
         stage = kwargs.get("stage_label", "")
@@ -77,27 +81,33 @@ def test_generate_validate_and_save_pipeline(monkeypatch, tmp_path):
     assert path.exists()
 
 
-def test_generate_uses_only_model_spec_notion_fetch(monkeypatch):
+def test_generate_includes_runtime_ethos_skill_docs(monkeypatch):
     fields = content_fields_from_csv()
     mock_data = _mock_activity(fields)
-    spec_url = "https://www.notion.so/model-spec-2f759bb91e68804d8885e9ae5945149d"
+    monkeypatch.setattr(
+        "app.generator.load_model_spec_only",
+        lambda: {
+            "spec_version": "1.0.0",
+            "spec_text": "authoritative model spec",
+            "spec_hash": "abc",
+            "fetched_at": 1.0,
+            "source": "https://www.notion.so/spec",
+        },
+    )
+    monkeypatch.setattr(
+        "app.generator.load_runtime_ethos_skill_docs",
+        lambda: {
+            "Ethos Definitions.md": "master ethos router",
+            "Montessori Ethos Skill Doc": "montessori runtime guidance",
+        },
+    )
 
-    monkeypatch.setattr("app.spec_manager.FLOPO_MODEL_SPEC_URL", spec_url)
-    monkeypatch.setattr("app.spec_manager.FLOPO_MODEL_SPEC_VERSION", "1.0.0")
-    monkeypatch.setattr("app.spec_manager.FLOPO_MODEL_SPEC_REFRESH_SECONDS", 0)
-    monkeypatch.setattr("app.spec_manager.load_cached_spec", lambda: None)
-    monkeypatch.setattr("app.spec_manager.save_cached_spec", lambda _payload: None)
+    captured_system_prompts: list[str] = []
 
-    calls: list[str] = []
-
-    def _fetch(ref: str) -> str:
-        calls.append(ref)
-        return "authoritative model spec"
-
-    monkeypatch.setattr("app.spec_manager.fetch_notion_page_markdown", _fetch)
-
-    def fake_openai_chat(_messages, **kwargs):
+    def fake_openai_chat(messages, **kwargs):
         stage = kwargs.get("stage_label", "")
+        if messages:
+            captured_system_prompts.append(str(messages[0].get("content", "")))
         if stage == "qc editor":
             return json.dumps(
                 {
@@ -121,27 +131,30 @@ def test_generate_uses_only_model_spec_notion_fetch(monkeypatch):
     assert report.passed is True
     assert rewrites == 0
     assert qc_report.applied is True
-    assert calls == [spec_url]
+    assert any("master ethos router" in prompt for prompt in captured_system_prompts)
+    assert any("montessori runtime guidance" in prompt for prompt in captured_system_prompts)
 
 
-def test_generate_endpoint_fetches_only_model_spec_url(monkeypatch):
+def test_generate_endpoint_loads_runtime_ethos_skill_docs(monkeypatch):
     fields = content_fields_from_csv()
     mock_data = _mock_activity(fields)
-    spec_url = "https://www.notion.so/model-spec-2f759bb91e68804d8885e9ae5945149d"
-
-    monkeypatch.setattr("app.spec_manager.FLOPO_MODEL_SPEC_URL", spec_url)
-    monkeypatch.setattr("app.spec_manager.FLOPO_MODEL_SPEC_VERSION", "1.0.0")
-    monkeypatch.setattr("app.spec_manager.FLOPO_MODEL_SPEC_REFRESH_SECONDS", 0)
-    monkeypatch.setattr("app.spec_manager.load_cached_spec", lambda: None)
-    monkeypatch.setattr("app.spec_manager.save_cached_spec", lambda _payload: None)
-
-    calls: list[str] = []
-
-    def _fetch(ref: str) -> str:
-        calls.append(ref)
-        return "authoritative model spec"
-
-    monkeypatch.setattr("app.spec_manager.fetch_notion_page_markdown", _fetch)
+    monkeypatch.setattr(
+        "app.generator.load_model_spec_only",
+        lambda: {
+            "spec_version": "1.0.0",
+            "spec_text": "authoritative model spec",
+            "spec_hash": "abc",
+            "fetched_at": 1.0,
+            "source": "https://www.notion.so/spec",
+        },
+    )
+    calls = {"ethos_docs": 0}
+    monkeypatch.setattr(
+        "app.generator.load_runtime_ethos_skill_docs",
+        lambda: calls.__setitem__("ethos_docs", calls["ethos_docs"] + 1) or {"Ethos Definitions.md": "runtime ethos guidance"},
+    )
+    monkeypatch.setattr(main.config, "APP_AUTH_USERNAME", "")
+    monkeypatch.setattr(main.config, "APP_AUTH_PASSWORD", "")
 
     def fake_openai_chat(_messages, **kwargs):
         stage = kwargs.get("stage_label", "")
@@ -168,7 +181,7 @@ def test_generate_endpoint_fetches_only_model_spec_url(monkeypatch):
         )
 
     assert response.status_code == 200
-    assert calls == [spec_url]
+    assert calls["ethos_docs"] == 1
 
 
 def test_generate_draft_endpoint_returns_qc_metadata(monkeypatch):
@@ -189,6 +202,8 @@ def test_generate_draft_endpoint_returns_qc_metadata(monkeypatch):
 
     monkeypatch.setattr(main, "content_fields_from_csv", lambda: mock_fields)
     monkeypatch.setattr(main, "validate_notion_configuration", lambda: (True, "Notion ready"))
+    monkeypatch.setattr(main.config, "APP_AUTH_USERNAME", "")
+    monkeypatch.setattr(main.config, "APP_AUTH_PASSWORD", "")
     monkeypatch.setattr(
         main,
         "generate_activity_draft",

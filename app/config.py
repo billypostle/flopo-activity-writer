@@ -54,6 +54,7 @@ REPO_ROOT = _resolve_repo_root(repo_root_candidates, fallback=PROJECT_DIR)
 load_dotenv(dotenv_path=PROJECT_DIR / ".env", override=True)
 
 SKILL_DOCS_DIR = REPO_ROOT / "Skill docs"
+ETHOS_SKILL_DOCS_DIR = SKILL_DOCS_DIR / "Ethos Skills"
 DATABASES_DIR = REPO_ROOT / "Databases"
 ACTIVITIES_OUTPUT_DIR = REPO_ROOT / "Activities"
 
@@ -158,6 +159,15 @@ INCLUDED_SKILL_DOCS = [
     "The EYFS seven areas of learning & development.md",
     "Ethos Definitions.md",
     "Yearly curriculum.md",
+]
+
+ETHOS_MASTER_DOC = "Ethos Definitions.md"
+
+INCLUDED_ETHOS_SKILL_DOCS = [
+    "montessori_ethos_adaptation_model_skill_reference.md",
+    "forest_school_ethos_adaptation_model_skill_reference.md",
+    "reggio_emilia_ethos_adaptation_skill_reference.md",
+    "steiner_waldorf_ethos_adaptation_generator_skill_spec.md",
 ]
 
 CSV_INTERNAL_COLUMNS = {
