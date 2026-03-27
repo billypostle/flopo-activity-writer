@@ -32,7 +32,11 @@
     .button, button { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 10px 24px; gap: 8px; border: var(--border); box-shadow: 0px 2px 2px rgba(13, 11, 5, 0.15), inset 0px 4px 0px rgba(255, 255, 255, 0.2), inset 0px -5px 0px rgba(13, 11, 5, 0.15); border-radius: 12px; cursor:pointer; font: inherit; font-weight: 600; }
     .primary { background: #D2FFFF; color:#203427; }
     .secondary { background: #F2F2F2; color:#203427; }
+    .secondary.is-active { background: #d7f5dd; }
+    .secondary:disabled { opacity: 0.6; cursor: not-allowed; }
     .mono { white-space: pre-wrap; font-family: Consolas, monospace; font-size: .9rem; background:#f2efe6; border: var(--border); border-radius: 8px; padding: 10px; margin-top:12px; max-height: 300px; overflow:auto; }
+    .support-copy { margin-top: 10px; line-height: 1.4; }
+    .support-copy.is-warning { color: #7a3a20; }
     #report { display: none; margin-top: 12px; }
     #report.is-visible { display: block; }
     .report-list { display: grid; gap: 10px; }
@@ -65,7 +69,9 @@
       <div class="btns">
         <button class="primary" id="generateBtn">Generate</button>
         <button class="secondary" id="notionBtn">Push To Notion</button>
+        <button class="secondary" id="wakeLockBtn" type="button" aria-pressed="false">Keep Screen Awake: Off</button>
       </div>
+      <div id="wakeLockStatus" class="muted support-copy">Keeps the screen awake while this tab stays open. Turn it on when you need it.</div>
       <div id="status" class="muted" style="margin-top:10px;"></div>
       <div id="report"></div>
       <div id="sections" class="sections"></div>
@@ -73,8 +79,115 @@
   </div>
   <script>
     let latestDraft = null;
+    let wakeLockSentinel = null;
+    let wakeLockRequested = false;
 
     const byId = (id) => document.getElementById(id);
+    const wakeLockSupported = Boolean(navigator.wakeLock && navigator.wakeLock.request);
+
+    function setWakeLockStatus(message, isWarning = false) {
+      const status = byId("wakeLockStatus");
+      status.textContent = message;
+      status.classList.toggle("is-warning", isWarning);
+    }
+
+    function updateWakeLockUi() {
+      const button = byId("wakeLockBtn");
+      const isEnabled = wakeLockRequested;
+      button.disabled = !wakeLockSupported;
+      button.classList.toggle("is-active", isEnabled);
+      button.setAttribute("aria-pressed", isEnabled ? "true" : "false");
+
+      if (!wakeLockSupported) {
+        button.textContent = "Keep Screen Awake: Unsupported";
+        setWakeLockStatus("This browser does not expose screen wake lock, so the page cannot keep the display awake.", true);
+        return;
+      }
+
+      button.textContent = wakeLockRequested ? "Keep Screen Awake: On" : "Keep Screen Awake: Off";
+    }
+
+    function describeWakeLockError(err) {
+      if (!err || typeof err !== "object") {
+        return "Screen-awake mode could not be enabled.";
+      }
+      if (err.name === "NotAllowedError") {
+        return "Safari/Chrome blocked screen-awake mode. Retry while the tab is visible and Low Power Mode is off.";
+      }
+      if (err.name === "AbortError") {
+        return "Screen-awake mode was interrupted. Try again while this tab is active.";
+      }
+      return `Screen-awake mode failed: ${err.message || err.name}`;
+    }
+
+    async function releaseWakeLock({ keepRequested = false } = {}) {
+      const sentinel = wakeLockSentinel;
+      wakeLockSentinel = null;
+      wakeLockRequested = keepRequested;
+
+      if (sentinel && !sentinel.released) {
+        try {
+          await sentinel.release();
+        } catch (_) {
+        }
+      }
+
+      if (!wakeLockRequested) {
+        setWakeLockStatus("Screen-awake mode is off.");
+      }
+      updateWakeLockUi();
+    }
+
+    async function requestWakeLock() {
+      if (!wakeLockSupported || !wakeLockRequested || document.visibilityState !== "visible") {
+        return false;
+      }
+
+      try {
+        wakeLockSentinel = await navigator.wakeLock.request("screen");
+        wakeLockSentinel.addEventListener("release", () => {
+          wakeLockSentinel = null;
+          updateWakeLockUi();
+          if (wakeLockRequested && document.visibilityState === "visible") {
+            setWakeLockStatus("Screen-awake mode was released. Reconnecting...");
+            requestWakeLock();
+            return;
+          }
+          if (wakeLockRequested) {
+            setWakeLockStatus("Screen-awake mode will resume when you return to this tab.");
+            return;
+          }
+          setWakeLockStatus("Screen-awake mode is off.");
+        });
+        setWakeLockStatus("Screen-awake mode is on while this tab stays visible.");
+        updateWakeLockUi();
+        return true;
+      } catch (err) {
+        wakeLockSentinel = null;
+        wakeLockRequested = false;
+        setWakeLockStatus(describeWakeLockError(err), true);
+        updateWakeLockUi();
+        return false;
+      }
+    }
+
+    async function toggleWakeLock() {
+      if (!wakeLockSupported) {
+        updateWakeLockUi();
+        return;
+      }
+
+      if (wakeLockRequested) {
+        await releaseWakeLock();
+        return;
+      }
+
+      wakeLockRequested = true;
+      setWakeLockStatus("Requesting screen-awake mode...");
+      updateWakeLockUi();
+      await requestWakeLock();
+    }
+
     function setStatusWithNotionLink(prefix, notionUrl, suffix = "") {
       const status = byId("status");
       status.innerHTML = "";
@@ -304,6 +417,31 @@
         byId("status").textContent = `Notion failed: ${err.message}`;
       }
     });
+
+    byId("wakeLockBtn").addEventListener("click", async () => {
+      await toggleWakeLock();
+    });
+
+    document.addEventListener("visibilitychange", async () => {
+      if (!wakeLockRequested) return;
+      if (document.visibilityState === "visible" && !wakeLockSentinel) {
+        setWakeLockStatus("Reactivating screen-awake mode...");
+        await requestWakeLock();
+        return;
+      }
+      if (document.visibilityState !== "visible") {
+        setWakeLockStatus("Screen-awake mode will resume when you return to this tab.");
+        updateWakeLockUi();
+      }
+    });
+
+    window.addEventListener("pagehide", () => {
+      if (wakeLockSentinel && !wakeLockSentinel.released) {
+        wakeLockSentinel.release().catch(() => {});
+      }
+    });
+
+    updateWakeLockUi();
 
   </script>
 </body>

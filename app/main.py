@@ -127,6 +127,7 @@ async def security_and_auth_middleware(request: Request, call_next):
 
     response = await call_next(request)
     response.headers["Content-Security-Policy"] = config.CONTENT_SECURITY_POLICY
+    response.headers["Permissions-Policy"] = config.PERMISSIONS_POLICY
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response

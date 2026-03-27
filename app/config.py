@@ -163,6 +163,7 @@ ALLOWED_ORIGINS = _parse_allowed_origins(
 )
 FRAME_ANCESTORS = ALLOWED_ORIGINS or ["'none'"]
 CONTENT_SECURITY_POLICY = f"frame-ancestors {' '.join(FRAME_ANCESTORS)}"
+PERMISSIONS_POLICY = "screen-wake-lock=(self)"
 
 INCLUDED_SKILL_DOCS = [
     "Writing guide.md",

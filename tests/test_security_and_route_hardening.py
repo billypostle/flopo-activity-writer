@@ -73,6 +73,7 @@ def test_security_headers_set(monkeypatch):
         "CONTENT_SECURITY_POLICY",
         "frame-ancestors https://flopo.co.uk https://flopo-stage.webflow.io",
     )
+    monkeypatch.setattr(main.config, "PERMISSIONS_POLICY", "screen-wake-lock=(self)")
 
     with TestClient(main.app) as client:
         response = client.get("/healthz")
@@ -81,5 +82,6 @@ def test_security_headers_set(monkeypatch):
         response.headers["content-security-policy"]
         == "frame-ancestors https://flopo.co.uk https://flopo-stage.webflow.io"
     )
+    assert response.headers["permissions-policy"] == "screen-wake-lock=(self)"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-content-type-options"] == "nosniff"
