@@ -17,6 +17,7 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
 
 ## Core writing context (mandatory)
 - Runtime generation uses the local FloPo docs in `Documentation/FloPo/Skill docs`.
+- Hosted deployments include a bundled copy under `config/skill_docs` so every generation run has the required references even when the full repo is not present.
 - Configure:
   - `FLOPO_MODEL_SPEC_URL`
   - `FLOPO_MODEL_SPEC_VERSION` (manual semver, required)

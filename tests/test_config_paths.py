@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 
 from app import config
-from app.config import _resolve_repo_root
+from app.config import _resolve_repo_root, _resolve_skill_docs_dir
 
 
 def test_resolve_repo_root_prefers_flopo_layout(tmp_path: Path) -> None:
@@ -57,3 +57,15 @@ def test_parse_allowed_origins_normalizes_and_deduplicates() -> None:
         "https://flopo.co.uk, https://flopo-stage.webflow.io/writer, https://flopo-stage.webflow.io"
     )
     assert parsed == ["https://flopo.co.uk", "https://flopo-stage.webflow.io"]
+
+
+def test_resolve_skill_docs_dir_falls_back_to_bundled_docs(monkeypatch, tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    bundled = tmp_path / "project" / "config" / "skill_docs"
+    bundled.mkdir(parents=True)
+
+    monkeypatch.setattr(config, "BUNDLED_SKILL_DOCS_DIR", bundled)
+
+    resolved = _resolve_skill_docs_dir(repo_root)
+    assert resolved == bundled

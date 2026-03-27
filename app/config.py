@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 APP_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = APP_DIR.parent
+BUNDLED_SKILL_DOCS_DIR = PROJECT_DIR / "config" / "skill_docs"
 
 
 def _first_existing_path(candidates: list[Path]) -> Path:
@@ -60,7 +61,10 @@ def _resolve_skill_docs_dir(repo_root: Path) -> Path:
     preferred = repo_root / "Documentation" / "FloPo" / "Skill docs"
     if preferred.exists():
         return preferred
-    return repo_root / "Skill docs"
+    legacy = repo_root / "Skill docs"
+    if legacy.exists():
+        return legacy
+    return BUNDLED_SKILL_DOCS_DIR
 
 
 SKILL_DOCS_DIR = _resolve_skill_docs_dir(REPO_ROOT)
