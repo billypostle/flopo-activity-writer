@@ -19,7 +19,10 @@ def _first_existing_path(candidates: list[Path]) -> Path:
 
 
 def _looks_like_flopo_repo(path: Path) -> bool:
-    return (path / "Databases").exists() and (path / "Skill docs").exists()
+    return (path / "Databases").exists() and (
+        (path / "Documentation" / "FloPo" / "Skill docs").exists()
+        or (path / "Skill docs").exists()
+    )
 
 
 def _resolve_repo_root(candidates: list[Path], fallback: Path) -> Path:
@@ -53,7 +56,14 @@ REPO_ROOT = _resolve_repo_root(repo_root_candidates, fallback=PROJECT_DIR)
 # Always load this project's .env, regardless of process working directory.
 load_dotenv(dotenv_path=PROJECT_DIR / ".env", override=True)
 
-SKILL_DOCS_DIR = REPO_ROOT / "Skill docs"
+def _resolve_skill_docs_dir(repo_root: Path) -> Path:
+    preferred = repo_root / "Documentation" / "FloPo" / "Skill docs"
+    if preferred.exists():
+        return preferred
+    return repo_root / "Skill docs"
+
+
+SKILL_DOCS_DIR = _resolve_skill_docs_dir(REPO_ROOT)
 ETHOS_SKILL_DOCS_DIR = SKILL_DOCS_DIR / "Ethos Skills"
 DATABASES_DIR = REPO_ROOT / "Databases"
 ACTIVITIES_OUTPUT_DIR = REPO_ROOT / "Activities"
@@ -78,7 +88,7 @@ NOTION_API_KEY = os.getenv("NOTION_API_KEY", "").strip().strip("\"'")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "").strip().strip("\"'")
 NOTION_VERSION = os.getenv("NOTION_VERSION", "2022-06-28").strip()
 NOTION_DRAFT_PROPERTY = os.getenv("NOTION_DRAFT_PROPERTY", "Draft").strip()
-NOTION_SKILL_DOCS_MODE = os.getenv("NOTION_SKILL_DOCS_MODE", "live_with_fallback").strip().lower()
+NOTION_SKILL_DOCS_MODE = os.getenv("NOTION_SKILL_DOCS_MODE", "local").strip().lower()
 NOTION_SKILL_DOCS_REQUEST_TIMEOUT_SECONDS = int(
     os.getenv("NOTION_SKILL_DOCS_REQUEST_TIMEOUT_SECONDS", "30")
 )
@@ -162,13 +172,7 @@ INCLUDED_SKILL_DOCS = [
 ]
 
 ETHOS_MASTER_DOC = "Ethos Definitions.md"
-
-INCLUDED_ETHOS_SKILL_DOCS = [
-    "montessori_ethos_adaptation_model_skill_reference.md",
-    "forest_school_ethos_adaptation_model_skill_reference.md",
-    "reggio_emilia_ethos_adaptation_skill_reference.md",
-    "steiner_waldorf_ethos_adaptation_generator_skill_spec.md",
-]
+LOCAL_MODEL_SPEC_DOC = "flo_po_model_facing_activity_spec_v_1.md"
 
 CSV_INTERNAL_COLUMNS = {
     "Slug",

@@ -16,15 +16,13 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
 - In `ENVIRONMENT=production`, FastAPI docs/openapi endpoints are disabled.
 
 ## Core writing context (mandatory)
-- Runtime generation uses one authoritative Model Spec page in Notion plus runtime ethos skill docs sourced from Notion when available.
+- Runtime generation uses the local FloPo docs in `Documentation/FloPo/Skill docs`.
 - Configure:
   - `FLOPO_MODEL_SPEC_URL`
   - `FLOPO_MODEL_SPEC_VERSION` (manual semver, required)
   - `FLOPO_MODEL_SPEC_CACHE_PATH`
   - `FLOPO_MODEL_SPEC_REFRESH_SECONDS`
-- The runtime prompt path injects only this Model Spec plus deterministic validators.
-- If fetched Model Spec content hash changes, the app logs:
-  - `Model spec content changed; bump FLOPO_MODEL_SPEC_VERSION (semver) after review.`
+- The runtime prompt path injects the local model-facing spec plus routed local reference docs.
 
 ## Project layout
 - `app/main.py`: FastAPI app and endpoints
@@ -89,9 +87,9 @@ If verification fails, `/api/notion/create-draft` returns a clear startup verifi
 `POST /api/generate-draft` runs a fixed pipeline in `app/generator.py`:
 
 1. Load canonical content field order from CSV via `content_fields_from_csv()`.
-2. Load the authoritative Notion Model Spec via `load_model_spec_only()`.
-3. Load runtime ethos skill docs via `load_runtime_ethos_skill_docs()`, preferring the Notion `Ethos Definitions` page and its child pages, with local fallback.
-4. Build initial system/user prompts using notes + Model Spec + runtime ethos docs.
+2. Load the local model-facing spec via `load_model_spec_only()`.
+3. Load runtime ethos skill docs via `load_runtime_ethos_skill_docs()`, using the local `Ethos Definitions.md` routing doc and its linked local markdown references.
+4. Build initial system/user prompts using notes + local model spec + routed ethos docs.
 5. Generate initial JSON draft with `OPENAI_MODEL`.
 6. Normalize keys to canonical field labels.
 7. Run deterministic validation (`validate_draft`).
@@ -169,6 +167,6 @@ Use this checklist before creating a Notion draft:
 ## Notes
 - Content fields are derived from `Databases/FloPo - Activities - 698734a9856055bb42014e7a (1).csv`.
 - Themes, age adaptations, materials, and context are inferred by the model from notes + guidance docs.
-- `/api/generate-draft` injects the Model Spec and runtime ethos skill docs at generation time. Ethos docs prefer live Notion content and fall back to local files only when needed.
+- `/api/generate-draft` injects the local model spec and routed local ethos skill docs at generation time. Notion is used for activity storage, not documentation reference.
 - QC pass fail-open behavior: if the second-pass QC call fails (request/parse/schema), the API returns the first-pass draft with QC metadata (`qc_applied=false`, `qc_error` populated).
 - Extended runbook: `Documentation/Activity Writer Workflow, Validation and QC.md`.

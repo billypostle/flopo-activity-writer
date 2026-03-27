@@ -3,6 +3,9 @@ from __future__ import annotations
 import csv
 import json
 import re
+import time
+import unicodedata
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -10,16 +13,12 @@ from .config import (
     ACTIVITIES_CSV_PATH,
     CSV_INTERNAL_COLUMNS,
     ETHOS_MASTER_DOC,
-    ETHOS_SKILL_DOCS_DIR,
     INCLUDED_SKILL_DOCS,
-    INCLUDED_ETHOS_SKILL_DOCS,
+    LOCAL_MODEL_SPEC_DOC,
     NOTION_SKILL_DOCS_CONFIG_PATH,
-    NOTION_SKILL_DOCS_MODE,
     SKILL_DOCS_DIR,
     THEMES_CSV_PATH,
 )
-from .notion_client import fetch_notion_child_page_refs, fetch_notion_page_markdown
-from .spec_manager import get_model_spec
 
 
 def normalize_label(value: str) -> str:
@@ -43,15 +42,56 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _resolve_local_skill_doc_path(filename: str) -> Path:
-    candidates = [
-        SKILL_DOCS_DIR / filename,
-        ETHOS_SKILL_DOCS_DIR / filename,
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
+def _normalize_doc_lookup_key(value: str) -> str:
+    text = unicodedata.normalize("NFKC", normalize_label(value)).strip()
+    text = text.replace(".md", "").strip()
+    text = (
+        text.replace("–", "-")
+        .replace("—", "-")
+        .replace("−", "-")
+        .replace("’", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+    )
+    text = re.sub(r"\s+", " ", text)
+    return text.casefold()
+
+
+def _skill_doc_index() -> dict[str, Path]:
+    index: dict[str, Path] = {}
+    for path in SKILL_DOCS_DIR.rglob("*.md"):
+        relative = path.relative_to(SKILL_DOCS_DIR)
+        candidates = {
+            path.name,
+            path.stem,
+            str(relative),
+            str(relative.with_suffix("")),
+        }
+        for candidate in candidates:
+            key = _normalize_doc_lookup_key(candidate)
+            if key and key not in index:
+                index[key] = path
+    return index
+
+
+def _resolve_local_skill_doc_path(doc_ref: str) -> Path:
+    normalized = _normalize_doc_lookup_key(doc_ref)
+    index = _skill_doc_index()
+    if normalized in index:
+        return index[normalized]
+    fallback = SKILL_DOCS_DIR / doc_ref
+    if fallback.suffix.lower() != ".md":
+        fallback = fallback.with_suffix(".md")
+    return fallback
+
+
+def _wiki_link_targets(text: str) -> list[str]:
+    targets: list[str] = []
+    for raw_target in re.findall(r"\[\[([^\]]+)\]\]", text or ""):
+        target = raw_target.split("|", 1)[0].split("#", 1)[0].strip()
+        if target and target not in targets:
+            targets.append(target)
+    return targets
 
 
 def _local_skill_docs(doc_names: list[str] | None = None) -> dict[str, str]:
@@ -93,93 +133,40 @@ def _load_notion_skill_doc_refs(path: Path = NOTION_SKILL_DOCS_CONFIG_PATH) -> d
 
 
 def load_skill_docs() -> dict[str, str]:
-    refs = _load_notion_skill_doc_refs()
-    requested_docs: list[str] = []
-    seen: set[str] = set()
-    for name in [*INCLUDED_SKILL_DOCS, *refs.keys()]:
-        normalized = normalize_label(name)
-        if normalized and normalized not in seen:
-            seen.add(normalized)
-            requested_docs.append(normalized)
+    return _local_skill_docs(INCLUDED_SKILL_DOCS)
 
-    local_docs = _local_skill_docs(requested_docs)
-    mode = (NOTION_SKILL_DOCS_MODE or "live_with_fallback").strip().lower()
-    if mode not in {"local", "live", "live_with_fallback"}:
-        raise RuntimeError(
-            "Invalid NOTION_SKILL_DOCS_MODE. Expected one of: local, live, live_with_fallback."
-        )
-    if mode == "local":
-        return local_docs
 
-    output = dict(local_docs) if mode == "live_with_fallback" else {name: "" for name in requested_docs}
-    errors: list[str] = []
+def load_runtime_ethos_skill_docs() -> dict[str, str]:
+    master_path = _resolve_local_skill_doc_path(ETHOS_MASTER_DOC)
+    master_text = read_text(master_path).strip()
+    if not master_text:
+        return {}
 
-    for filename in requested_docs:
-        ref = refs.get(normalize_label(filename), "")
-        if not ref:
-            if mode == "live":
-                errors.append(f"Missing Notion page reference for skill doc: {filename}")
+    output: dict[str, str] = {ETHOS_MASTER_DOC: master_text}
+    for target in _wiki_link_targets(master_text):
+        target_path = _resolve_local_skill_doc_path(target)
+        target_text = read_text(target_path).strip()
+        if not target_text:
             continue
-
-        try:
-            output[filename] = fetch_notion_page_markdown(ref)
-        except Exception as exc:
-            if mode == "live":
-                errors.append(f"Failed loading {filename} from Notion: {exc}")
-
-    if mode == "live" and errors:
-        raise RuntimeError("Notion skill doc loading failed:\n- " + "\n- ".join(errors))
+        output[target_path.stem] = target_text
 
     return output
 
 
-def _local_runtime_ethos_docs() -> dict[str, str]:
-    return _local_skill_docs([ETHOS_MASTER_DOC, *INCLUDED_ETHOS_SKILL_DOCS])
-
-
-def load_runtime_ethos_skill_docs() -> dict[str, str]:
-    refs = _load_notion_skill_doc_refs()
-    mode = (NOTION_SKILL_DOCS_MODE or "live_with_fallback").strip().lower()
-    if mode not in {"local", "live", "live_with_fallback"}:
-        raise RuntimeError(
-            "Invalid NOTION_SKILL_DOCS_MODE. Expected one of: local, live, live_with_fallback."
-        )
-
-    local_docs = _local_runtime_ethos_docs()
-    if mode == "local":
-        return {name: text for name, text in local_docs.items() if text.strip()}
-
-    output = dict(local_docs) if mode == "live_with_fallback" else {}
-    master_ref = refs.get(normalize_label(ETHOS_MASTER_DOC), "")
-    errors: list[str] = []
-
-    if not master_ref:
-        if mode == "live":
-            raise RuntimeError(f"Missing Notion page reference for skill doc: {ETHOS_MASTER_DOC}")
-        return {name: text for name, text in output.items() if text.strip()}
-
-    try:
-        master_content = fetch_notion_page_markdown(master_ref)
-        if master_content.strip():
-            output[ETHOS_MASTER_DOC] = master_content
-
-        child_refs = fetch_notion_child_page_refs(master_ref)
-        for title, ref in child_refs.items():
-            child_content = fetch_notion_page_markdown(ref)
-            if child_content.strip():
-                output[normalize_label(title)] = child_content
-    except Exception as exc:
-        if mode == "live":
-            errors.append(f"Failed loading runtime ethos skill docs from Notion: {exc}")
-
-    if mode == "live" and errors:
-        raise RuntimeError("Notion skill doc loading failed:\n- " + "\n- ".join(errors))
-
-    return {name: text for name, text in output.items() if str(text).strip()}
-
-
 def load_model_spec_only() -> dict[str, Any]:
-    return get_model_spec()
+    spec_path = _resolve_local_skill_doc_path(LOCAL_MODEL_SPEC_DOC)
+    spec_text = read_text(spec_path).strip()
+    if not spec_text:
+        raise RuntimeError(f"Local model spec is missing or empty: {spec_path}")
+
+    spec_hash = sha256(spec_text.encode("utf-8")).hexdigest()
+    return {
+        "spec_version": spec_hash[:12],
+        "spec_text": spec_text,
+        "spec_hash": spec_hash,
+        "fetched_at": time.time(),
+        "source": str(spec_path),
+    }
 
 
 def extract_csv_headers(csv_path: Path = ACTIVITIES_CSV_PATH) -> list[str]:
