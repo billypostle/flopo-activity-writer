@@ -5,7 +5,7 @@ from typing import Iterable
 
 from .config import ALLOWED_EMPTY_FIELDS, BANNED_PHRASES, REQUIRED_ETHOS_FIELDS
 from .models import ValidationReport
-from .resources import normalize_label
+from .resources import normalize_label, parse_theme_values, parse_themes
 
 
 def _non_empty(value: str | None) -> bool:
@@ -176,6 +176,29 @@ def validate_section_order(draft: dict[str, str], expected_fields: Iterable[str]
     return []
 
 
+def validate_themes(draft: dict[str, str], allowed_themes: Iterable[str] | None = None) -> list[str]:
+    themes_value = draft.get("Themes", "")
+    if not _non_empty(themes_value):
+        return ["Themes is required."]
+
+    approved = list(allowed_themes or parse_themes())
+    themes = parse_theme_values(themes_value, approved)
+    if not themes:
+        return ["Themes is required."]
+
+    approved_set = set(approved)
+    if not approved_set:
+        return ["Approved Webflow theme list is unavailable; cannot validate Themes."]
+
+    invalid = [theme for theme in themes if theme not in approved_set]
+    if invalid:
+        return [
+            "Themes contains values that do not exactly match existing Webflow CMS themes: "
+            + "; ".join(invalid)
+        ]
+    return []
+
+
 def validate_summary_and_preview_warnings(draft: dict[str, str]) -> list[str]:
     warnings = []
     summary = draft.get("Activity Summary", "")
@@ -277,6 +300,7 @@ def validate_draft(draft: dict[str, str], expected_fields: Iterable[str]) -> Val
     blocking_issues.extend(validate_title(normalized_draft.get("Activity Title", "")))
     blocking_issues.extend(validate_section_completeness(normalized_draft, fields))
     blocking_issues.extend(validate_section_order(draft, fields))
+    blocking_issues.extend(validate_themes(normalized_draft))
     blocking_issues.extend(validate_summary_and_preview(normalized_draft))
     blocking_issues.extend(validate_preview_quality(normalized_draft))
     blocking_issues.extend(validate_ethos_depth(normalized_draft))

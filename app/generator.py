@@ -9,7 +9,7 @@ import requests
 
 from .config import ALLOWED_EMPTY_FIELDS, MAX_REWRITE_ATTEMPTS, OPENAI_API_KEY, OPENAI_MODEL, OPENAI_QC_MODEL
 from .models import GenerateDraftRequest, QCReport, ValidationReport
-from .resources import load_model_spec_only, load_runtime_ethos_skill_docs, normalize_label
+from .resources import load_model_spec_only, load_runtime_ethos_skill_docs, normalize_label, parse_themes
 from .validators import validate_draft
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
@@ -159,6 +159,16 @@ def _ethos_skill_docs_prompt(ethos_skill_docs: dict[str, str]) -> str:
     )
 
 
+def _approved_themes_prompt() -> str:
+    themes = parse_themes()
+    if not themes:
+        return ""
+    return (
+        "Approved Webflow CMS themes for the Themes field (use exact names only; separate multiple themes with semicolons, never commas):\n"
+        + "\n".join(f"- {theme}" for theme in themes)
+    )
+
+
 def _system_prompt(
     model_spec: dict[str, Any],
     content_fields: list[str],
@@ -170,6 +180,8 @@ def _system_prompt(
         raise RuntimeError("Model spec is incomplete. Expected spec_version and non-empty spec_text.")
     ethos_docs_text = _ethos_skill_docs_prompt(ethos_skill_docs)
     ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
+    themes_text = _approved_themes_prompt()
+    themes_section = f"\n\n{themes_text}" if themes_text else ""
     return (
         "You are a specialist FloPo activity writer. "
         "Generate content that strictly follows the Model Spec. "
@@ -187,12 +199,14 @@ def _system_prompt(
         "- Preview content must not discuss what is withheld/revealed/disclosed.\n"
         "- Preview content must include explicit actors (children and/or adults) doing something.\n"
         "- Preview content should include concrete child/adult/material details.\n"
+        "- Themes must be separated with semicolons (`Theme; Theme`), never commas.\n"
         "- Ethos adaptations must be concrete and deep.\n\n"
         "Conflict resolution policy:\n"
         "- If any other instruction conflicts, the Model Spec wins.\n\n"
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{themes_section}"
         f"{ethos_section}"
     )
 
@@ -203,7 +217,7 @@ def _user_prompt(request: GenerateDraftRequest, model_spec: dict[str, Any]) -> s
         f"spec_version: {spec_version}\n\n"
         "Source notes:\n"
         f"{request.notes}\n\n"
-        "Use only the notes and Model Spec to infer all content fields, including themes, age adaptations, materials, and contextual framing."
+        "Use only the notes, Model Spec and approved Webflow CMS theme list to infer all content fields, including themes, age adaptations, materials, and contextual framing."
     )
 
 
@@ -218,6 +232,8 @@ def _rewrite_prompt(
     spec_text = str(model_spec.get("spec_text", "")).strip()
     ethos_docs_text = _ethos_skill_docs_prompt(ethos_skill_docs)
     ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
+    themes_text = _approved_themes_prompt()
+    themes_section = f"\n\n{themes_text}" if themes_text else ""
     return (
         "Rewrite the activity JSON to resolve only the blocking issues below while preserving all fields.\n"
         f"Issues:\n- " + "\n- ".join(issues) + "\n\n"
@@ -225,11 +241,14 @@ def _rewrite_prompt(
         "- Preserve all keys exactly.\n"
         "- Only edit fields implicated by the blocking issues.\n"
         "- For Preview content, write an in-activity snippet only; no meta wording about previews/excerpts.\n"
+        "- For Themes, use only exact approved Webflow CMS theme names.\n"
+        "- For Themes, separate multiple values with semicolons (`Theme; Theme`), never commas.\n"
         "- Keep Preview content useful but incomplete without describing what is withheld/revealed/disclosed.\n"
         "- Include explicit scene actors (children/adults) and concrete materials/actions.\n\n"
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{themes_section}"
         f"{ethos_section}\n\n"
         "Return strict JSON only with exactly these keys:\n"
         f"{_field_schema_prompt(content_fields)}\n\n"
@@ -247,6 +266,8 @@ def _qc_system_prompt(
     spec_text = str(model_spec.get("spec_text", "")).strip()
     ethos_docs_text = _ethos_skill_docs_prompt(ethos_skill_docs)
     ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
+    themes_text = _approved_themes_prompt()
+    themes_section = f"\n\n{themes_text}" if themes_text else ""
     return (
         "You are FloPo QC Editor, a strict validating editor. "
         "Your task is to review the provided draft against the Model Spec and output only targeted fixes.\n\n"
@@ -257,6 +278,8 @@ def _qc_system_prompt(
         "- Preserve field names exactly.\n"
         "- Keep plain text only. No HTML.\n"
         "- Keep child/adult realism, concrete context, and age-aware safety detail.\n"
+        "- Themes must use only exact approved Webflow CMS theme names.\n"
+        "- Themes must separate multiple values with semicolons (`Theme; Theme`), never commas.\n"
         "- Do not introduce meta commentary about preview in Preview content.\n"
         "- revised_fields keys must be a subset of fields_to_edit.\n"
         "- Never include fields outside the allowed field list.\n\n"
@@ -280,6 +303,7 @@ def _qc_system_prompt(
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{themes_section}"
         f"{ethos_section}\n\n"
         "Allowed fields:\n"
         f"{json.dumps(content_fields, ensure_ascii=False)}"

@@ -52,7 +52,7 @@ def test_qc_pass_true_returns_unchanged_draft(monkeypatch):
     )
 
     updated, qc_report = _run_qc_editor_pass(
-        draft, {"spec_version": "1.0.0", "spec_text": "x"}, fields, report
+        draft, {"spec_version": "1.0.0", "spec_text": "x"}, {}, fields, report
     )
 
     assert updated == draft
@@ -97,7 +97,7 @@ def test_qc_targeted_edit_updates_only_flagged_fields(monkeypatch):
     )
 
     updated, qc_report = _run_qc_editor_pass(
-        draft, {"spec_version": "1.0.0", "spec_text": "x"}, fields, report
+        draft, {"spec_version": "1.0.0", "spec_text": "x"}, {}, fields, report
     )
 
     assert updated["Preview content"] == new_preview
@@ -134,7 +134,7 @@ def test_qc_invalid_field_names_are_ignored(monkeypatch):
     )
 
     updated, qc_report = _run_qc_editor_pass(
-        draft, {"spec_version": "1.0.0", "spec_text": "x"}, fields, report
+        draft, {"spec_version": "1.0.0", "spec_text": "x"}, {}, fields, report
     )
 
     assert updated == draft
@@ -150,7 +150,7 @@ def test_qc_malformed_json_fail_open(monkeypatch):
     monkeypatch.setattr("app.generator._openai_chat", lambda *_args, **_kwargs: "not json")
 
     updated, qc_report = _run_qc_editor_pass(
-        draft, {"spec_version": "1.0.0", "spec_text": "x"}, fields, report
+        draft, {"spec_version": "1.0.0", "spec_text": "x"}, {}, fields, report
     )
 
     assert updated == draft
@@ -178,7 +178,7 @@ def test_qc_edits_discarded_when_validation_gets_worse(monkeypatch):
     )
 
     updated, qc_report = _run_qc_editor_pass(
-        draft, {"spec_version": "1.0.0", "spec_text": "x"}, fields, report
+        draft, {"spec_version": "1.0.0", "spec_text": "x"}, {}, fields, report
     )
 
     assert updated == draft

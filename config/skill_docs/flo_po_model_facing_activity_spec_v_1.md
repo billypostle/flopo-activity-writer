@@ -103,8 +103,13 @@ No deviations.
 ## Themes
 
 - Only from approved controlled list
+- Must exactly match existing Webflow CMS theme item names
+- Preserve exact spelling, punctuation, spacing and capitalisation from the approved theme list
 - Separate with semicolons
 - Include only directly relevant themes
+- Do not invent, rename, singularise, pluralise or infer themes from EYFS areas, developmental areas, materials or activity wording
+- Never use non-CMS themes such as `Sensory Play`, `Sensory play`, `Communication and Language`, `Outdoor play`, `Physical Development`, `Water play`, `Fine Motor`, `Creative Arts`, `Mathematics`, `Colours` or `Understanding the World`
+- If the best descriptive concept is not an approved Webflow CMS theme, omit it from `Themes`
 
 ## Activity Summary
 

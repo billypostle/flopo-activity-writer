@@ -9,13 +9,16 @@ import requests
 
 from .config import (
     NOTION_API_KEY,
+    NOTION_DATA_SOURCE_ID,
     NOTION_DATABASE_ID,
     NOTION_FIELD_MAP_PATH,
     NOTION_SKILL_DOCS_REQUEST_TIMEOUT_SECONDS,
     NOTION_VERSION,
 )
+from .resources import normalize_theme_list
 
 NOTION_BASE_URL = "https://api.notion.com/v1"
+MIN_DATA_SOURCE_NOTION_VERSION = "2025-09-03"
 
 
 def _load_field_map(path: Path = NOTION_FIELD_MAP_PATH) -> dict[str, Any]:
@@ -27,12 +30,18 @@ def _load_field_map(path: Path = NOTION_FIELD_MAP_PATH) -> dict[str, Any]:
     return {"title_property": "Activity Title", "field_property_map": {}}
 
 
-def _headers() -> dict[str, str]:
+def _effective_notion_version(*, require_data_sources: bool = False) -> str:
+    if require_data_sources and NOTION_VERSION < MIN_DATA_SOURCE_NOTION_VERSION:
+        return MIN_DATA_SOURCE_NOTION_VERSION
+    return NOTION_VERSION
+
+
+def _headers(*, require_data_sources: bool = False) -> dict[str, str]:
     if not NOTION_API_KEY:
         raise RuntimeError("NOTION_API_KEY is missing.")
     return {
         "Authorization": f"Bearer {NOTION_API_KEY}",
-        "Notion-Version": NOTION_VERSION,
+        "Notion-Version": _effective_notion_version(require_data_sources=require_data_sources),
         "Content-Type": "application/json",
     }
 
@@ -51,6 +60,18 @@ def _format_notion_error(response: requests.Response) -> str:
 
 def _request_notion_json(url: str, timeout: int = 30) -> dict[str, Any]:
     response = requests.get(url, headers=_headers(), timeout=timeout)
+    if response.status_code >= 400:
+        raise RuntimeError(_format_notion_error(response))
+    return response.json()
+
+
+def _request_notion_json_with_headers(
+    url: str,
+    *,
+    headers: dict[str, str],
+    timeout: int = 30,
+) -> dict[str, Any]:
+    response = requests.get(url, headers=headers, timeout=timeout)
     if response.status_code >= 400:
         raise RuntimeError(_format_notion_error(response))
     return response.json()
@@ -215,33 +236,81 @@ def fetch_notion_child_page_refs(page_ref: str) -> dict[str, str]:
 def validate_notion_configuration() -> tuple[bool, str]:
     if not NOTION_API_KEY:
         return False, "NOTION_API_KEY is missing."
-    if not NOTION_DATABASE_ID:
-        return False, "NOTION_DATABASE_ID is missing."
+    if not NOTION_DATA_SOURCE_ID and not NOTION_DATABASE_ID:
+        return False, "Set NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID."
 
     try:
-        response = requests.get(
-            f"{NOTION_BASE_URL}/databases/{NOTION_DATABASE_ID}",
-            headers=_headers(),
-            timeout=30,
-        )
-    except requests.RequestException as exc:
+        parent_type, parent_id, _ = _resolve_parent_target()
+    except (RuntimeError, requests.RequestException) as exc:
         return False, f"Notion validation request failed: {exc}"
-
-    if response.status_code >= 400:
-        return False, _format_notion_error(response)
-
-    return True, "Notion configuration verified."
+    return True, f"Notion configuration verified via {parent_type}: {parent_id}"
 
 
-def _database_properties() -> dict[str, dict[str, Any]]:
+def _resolve_database_data_source(database_id: str) -> tuple[str, str | None]:
     response = requests.get(
-        f"{NOTION_BASE_URL}/databases/{NOTION_DATABASE_ID}",
-        headers=_headers(),
+        f"{NOTION_BASE_URL}/databases/{database_id}",
+        headers=_headers(require_data_sources=True),
         timeout=30,
     )
     if response.status_code >= 400:
         raise RuntimeError(_format_notion_error(response))
     body = response.json()
+    data_sources = body.get("data_sources", [])
+    if not data_sources:
+        raise RuntimeError(
+            "The configured Notion database was found, but it has no data sources. "
+            "Set NOTION_DATA_SOURCE_ID directly."
+        )
+    if len(data_sources) > 1:
+        options = ", ".join(
+            f"{item.get('name') or '<unnamed>'} ({item.get('id') or '<missing id>'})"
+            for item in data_sources
+        )
+        raise RuntimeError(
+            "The configured Notion database has multiple data sources. "
+            f"Set NOTION_DATA_SOURCE_ID to one of: {options}"
+        )
+    data_source = data_sources[0]
+    return str(data_source.get("id") or "").strip(), str(data_source.get("name") or "").strip() or None
+
+
+def _resolve_parent_target() -> tuple[str, str, dict[str, Any]]:
+    if NOTION_DATA_SOURCE_ID:
+        body = _request_notion_json_with_headers(
+            f"{NOTION_BASE_URL}/data_sources/{NOTION_DATA_SOURCE_ID}",
+            headers=_headers(require_data_sources=True),
+            timeout=30,
+        )
+        return "data_source_id", str(body.get("id") or NOTION_DATA_SOURCE_ID), body
+
+    if not NOTION_DATABASE_ID:
+        raise RuntimeError("Set NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID.")
+
+    data_source_headers = _headers(require_data_sources=True)
+    data_source_url = f"{NOTION_BASE_URL}/data_sources/{NOTION_DATABASE_ID}"
+    data_source_response = requests.get(data_source_url, headers=data_source_headers, timeout=30)
+    if data_source_response.status_code < 400:
+        body = data_source_response.json()
+        return "data_source_id", str(body.get("id") or NOTION_DATABASE_ID), body
+
+    try:
+        resolved_id, _ = _resolve_database_data_source(NOTION_DATABASE_ID)
+    except RuntimeError as database_error:
+        raise RuntimeError(
+            f"{database_error} "
+            f"The configured NOTION_DATABASE_ID ({NOTION_DATABASE_ID}) is not currently usable."
+        ) from database_error
+
+    body = _request_notion_json_with_headers(
+        f"{NOTION_BASE_URL}/data_sources/{resolved_id}",
+        headers=data_source_headers,
+        timeout=30,
+    )
+    return "data_source_id", str(body.get("id") or resolved_id), body
+
+
+def _database_properties() -> dict[str, dict[str, Any]]:
+    _, _, body = _resolve_parent_target()
     return body.get("properties", {})
 
 
@@ -306,7 +375,7 @@ def _to_notion_properties(
             "title": [{"type": "text", "text": {"content": title_value or "Untitled Activity"}}]
         }
 
-    themes_raw = draft.get("Themes", "")
+    themes_raw = normalize_theme_list(draft.get("Themes", ""))
     themes_entry = db_properties.get(themes_property)
     if themes_raw and themes_entry:
         themes_payload = _property_payload_for_value(themes_entry.get("type", ""), themes_raw)
@@ -327,19 +396,20 @@ def _to_notion_properties(
 
 
 def create_notion_draft(draft: dict[str, str]) -> dict[str, Any]:
-    if not NOTION_DATABASE_ID:
-        raise RuntimeError("NOTION_DATABASE_ID is missing.")
+    if not NOTION_DATA_SOURCE_ID and not NOTION_DATABASE_ID:
+        raise RuntimeError("Set NOTION_DATA_SOURCE_ID or NOTION_DATABASE_ID.")
 
     field_map = _load_field_map()
     db_properties = _database_properties()
     properties = _to_notion_properties(draft, field_map, db_properties)
+    parent_type, parent_id, _ = _resolve_parent_target()
     payload = {
-        "parent": {"database_id": NOTION_DATABASE_ID},
+        "parent": {parent_type: parent_id},
         "properties": properties,
     }
     response = requests.post(
         f"{NOTION_BASE_URL}/pages",
-        headers=_headers(),
+        headers=_headers(require_data_sources=True),
         json=payload,
         timeout=60,
     )

@@ -89,6 +89,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip().strip("\"'")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2").strip()
 OPENAI_QC_MODEL = os.getenv("OPENAI_QC_MODEL", "o3").strip()
 NOTION_API_KEY = os.getenv("NOTION_API_KEY", "").strip().strip("\"'")
+NOTION_DATA_SOURCE_ID = os.getenv("NOTION_DATA_SOURCE_ID", "").strip().strip("\"'")
 NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "").strip().strip("\"'")
 NOTION_VERSION = os.getenv("NOTION_VERSION", "2022-06-28").strip()
 NOTION_DRAFT_PROPERTY = os.getenv("NOTION_DRAFT_PROPERTY", "Draft").strip()
@@ -186,9 +187,11 @@ CSV_INTERNAL_COLUMNS = {
     "Item ID",
     "Archived",
     "Draft",
+    "Created",
     "Created On",
     "Updated On",
     "Published On",
+    "webflow synced",
     "Hero",
     "Ethos Adaptation: Montessori (image)",
     "Ethos Adaptation: Forest School (image)",

@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app import config
 from app.config import _resolve_repo_root, _resolve_skill_docs_dir
+from app.resources import content_fields_from_csv
 
 
 def test_resolve_repo_root_prefers_flopo_layout(tmp_path: Path) -> None:
@@ -69,3 +70,13 @@ def test_resolve_skill_docs_dir_falls_back_to_bundled_docs(monkeypatch, tmp_path
 
     resolved = _resolve_skill_docs_dir(repo_root)
     assert resolved == bundled
+
+
+def test_content_fields_excludes_notion_and_webflow_metadata(tmp_path: Path) -> None:
+    csv_path = tmp_path / "activities.csv"
+    csv_path.write_text(
+        "Activity Title,Created,webflow synced,Created On,Draft,Activity Summary\n",
+        encoding="utf-8",
+    )
+
+    assert content_fields_from_csv(csv_path) == ["Activity Title", "Activity Summary"]

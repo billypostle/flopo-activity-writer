@@ -112,3 +112,14 @@ def test_preview_write_up_language_is_blocking():
     assert report.passed is False
     assert any("meta-language" in issue.lower() for issue in report.blocking_issues)
     assert any("scene actors" in issue.lower() for issue in report.blocking_issues)
+
+
+def test_unknown_themes_are_blocking():
+    draft = _base_draft()
+    draft["Themes"] = "Winter; Sensory Play; Communication and Language; Water play"
+    fields = list(draft.keys())
+    report = validate_draft(draft, fields)
+
+    assert report.passed is False
+    assert any("webflow cms themes" in issue.lower() for issue in report.blocking_issues)
+    assert any("Sensory Play" in issue for issue in report.blocking_issues)

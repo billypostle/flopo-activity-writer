@@ -44,21 +44,25 @@ Long-tail, descriptive, search-friendly. Formatted according to the Activity Tit
 
 Select all applicable themes from the approved [[Themes]] reference. Themes must be drawn exclusively from the following controlled list — do not invent new themes.
 
+Themes are Webflow CMS multi-reference values. Every theme must exactly match an existing Webflow CMS theme item by spelling, punctuation, spacing and capitalisation. Near matches, renamed categories, EYFS areas, developmental areas, material types or topic phrases are prohibited because they cannot sync to Webflow.
+
 **Seasons:* Winter, Spring, Summer, Autumn
 
 **[[Ethos Definitions|Ethos:]]** Montessori, Forest School, Reggio Emilia, Steiner (Waldorf)
 
 **Activity Styles:** Scavenger hunt, Tuff tray, Water/sand tray, Mark making, Sorting, Dressing, Messy play, Problem solving, Modelling, Small world play, Music and movement, Role-play, Outdoor exploration, Creative arts and design, Mathematical, Literacy
 
-**Topics:** All about me, Space, Hibernation, Day and night, Nature/rainbows and weather, Gardening, Mini beasts, Healthy eating, Baby animals, Life cycles, Eco friendly, People who help us, Cultures and countries, Music from different cultures, Languages, Physical education, Sun safety, Teddy bears picnic, Traditional stories, Favourite stories, Holidays, Transport
+**Topics:** All about me, Space, Hibernation, Day and night, Nature / rainbows and weather, Gardening, Mini beasts, Healthy eating, Baby animals, Life cycles, Eco friendly, People who help us, Cultures and countries, Music from different cultures, Languages, Physical education (yoga, dance, football etc), Sun safety, Teddy bears picnic, Traditional stories, Favourite stories, Holidays
 
-**Celebrations:** Christmas, Birthday, Diwali, Chinese new year, Easter, Pancake day, St Patrick's day, New years, Halloween, Valentine's Day, Mother's Day, Father's Day, Earth day, Harvest festival, Bonfire night, Remembrance day, World book day, St David's day, Holi festival, Eid al-Fitr, British science week, World wildlife day
+**Celebrations:** Christmas, Birthday, Diwali, Chinese New Year, Easter, Pancake Day, St Patrick's Day, New Year, Halloween, Valentine's Day, Mother's Day, Father's Day, Earth Day, Harvest Festival, Bonfire Night, Remembrance Day, World Book Day, St David's Day, Holi Festival, Eid al-Fitr, British Science Week, World Wildlife Day
 
 ### Constraints:
 
 - Only include themes that are directly relevant to the activity
 - Separate multiple themes with a semicolon: `Theme; Theme; Theme`
 - Themes populate the CMS multi-reference field directly — accuracy matters for filtering
+- Do not create inferred themes such as `Sensory Play`, `Sensory play`, `Communication and Language`, `Outdoor play`, `Physical Development`, `Water play`, `Fine Motor`, `Creative Arts`, `Mathematics`, `Colours` or `Understanding the World`
+- If no exact CMS theme exists for a concept, omit that concept from `Themes` and express it elsewhere in the activity content if relevant
 
 ---
 

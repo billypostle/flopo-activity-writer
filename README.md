@@ -49,6 +49,7 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
    - `OPENAI_MODEL` (default `gpt-5.2`)
    - `OPENAI_QC_MODEL` (default `o3`)
    - `NOTION_API_KEY`
+   - `NOTION_DATA_SOURCE_ID` (preferred)
    - `NOTION_DATABASE_ID`
    - `NOTION_DRAFT_PROPERTY`
    - `FLOPO_MODEL_SPEC_URL`
@@ -75,13 +76,19 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
 4. Deploy and note your `*.vercel.app` URL.
 5. Embed that URL in your Webflow password-protected page via iframe.
 
+## Production publish action
+- In the Codex toolbar, run `Publish_FloPo_Activity_Writer_To_Vercel_Prod.bat`.
+- The action changes into `Tools/Activity_Writer`, runs `python -m pytest`, and only deploys if tests pass.
+- It publishes the linked Vercel project with `vercel deploy --prod`.
+- Vercel authentication must already be available through `vercel login` or `VERCEL_TOKEN`.
+
 ## Notion integration setup
 1. Create a Notion internal integration.
 2. Share the target database with that integration.
-3. Set `NOTION_API_KEY` and `NOTION_DATABASE_ID` in `.env`.
+3. Set `NOTION_API_KEY` and either `NOTION_DATA_SOURCE_ID` or `NOTION_DATABASE_ID` in `.env`.
 4. If property names differ, update `config/notion_field_map.json`.
 
-At app startup, Notion config is verified against `GET /v1/databases/{NOTION_DATABASE_ID}`.
+At app startup, the app prefers `GET /v1/data_sources/{NOTION_DATA_SOURCE_ID}`. If only `NOTION_DATABASE_ID` is set, it will try to resolve a single child data source from that database.
 If verification fails, `/api/notion/create-draft` returns a clear startup verification error.
 
 ## Generation workflow (end-to-end)

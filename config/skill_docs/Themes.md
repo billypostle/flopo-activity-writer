@@ -1,5 +1,9 @@
 # Themes
 
+Use this controlled list when populating the `Themes` section in the activity structure.
+
+These names are Webflow CMS reference values. Use them exactly as written. Do not create new themes, close variants, EYFS area names, developmental area names or material/topic phrases.
+
 # Seasons
 
 - **Winter**
@@ -7,7 +11,7 @@
 - **Summer**
 - **Autumn**
 
-# Ethos’
+# Ethos
 
 - Montessori
 - Forest School
@@ -39,7 +43,7 @@
 - Space
 - Hibernation
 - Day and night
-- Nature/ rainbows and weather
+- Nature / rainbows and weather
 - Gardening
 - Mini beasts
 - Healthy eating
@@ -50,7 +54,7 @@
 - Cultures and countries
 - Music from different cultures
 - Languages
-- Physical education  (yoga, dance, football etc) sports week
+- Physical education (yoga, dance, football etc)
 - Sun safety
 - Teddy bears picnic
 - Traditional stories
@@ -62,22 +66,22 @@
 - Christmas
 - Birthday
 - Diwali
-- Chinese new year
+- Chinese New Year
 - Easter
-- Pancake day
-- St Patrick’s day
-- New years
+- Pancake Day
+- St Patrick's Day
+- New Year
 - Halloween
-- Valentine’s Day
-- Mother’s Day
-- Father’s Day
-- Earth day
-- Harvest festival
-- Bonfire night
-- Remembrance day
-- World book day
-- St David’s day
-- Holi festival
-- Eid - al Fitr
-- British science week
-- World wildlife day
+- Valentine's Day
+- Mother's Day
+- Father's Day
+- Earth Day
+- Harvest Festival
+- Bonfire Night
+- Remembrance Day
+- World Book Day
+- St David's Day
+- Holi Festival
+- Eid al-Fitr
+- British Science Week
+- World Wildlife Day

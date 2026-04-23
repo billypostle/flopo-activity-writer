@@ -185,9 +185,17 @@ def parse_themes() -> list[str]:
     if THEMES_CSV_PATH.exists():
         output: list[str] = []
         with THEMES_CSV_PATH.open("r", encoding="utf-8-sig", newline="") as f:
-            reader = csv.DictReader(f)
+            reader = csv.reader(f)
+            next(reader, None)
             for row in reader:
-                name = normalize_label(row.get("Name", ""))
+                if not row:
+                    continue
+                if len(row) <= 2:
+                    name = normalize_label(row[0])
+                else:
+                    # Webflow exports can contain unquoted commas in names. Treat the
+                    # final column as Theme Type and preserve the full name.
+                    name = normalize_label(", ".join(part.strip() for part in row[:-1]))
                 if name:
                     output.append(name)
         return output
@@ -198,6 +206,63 @@ def parse_themes() -> list[str]:
         for line in themes_md.splitlines()
         if line.strip().startswith("-")
     ]
+
+
+def parse_theme_values(value: str, allowed_themes: list[str] | None = None) -> list[str]:
+    text = normalize_label(value)
+    if not text:
+        return []
+
+    themes = allowed_themes if allowed_themes is not None else parse_themes()
+    if not themes:
+        return [part.strip() for part in text.split(";") if part.strip()]
+
+    separators = {",", ";", "|", "\n", "\r"}
+    candidates = sorted(themes, key=len, reverse=True)
+    seen: set[str] = set()
+    parsed: list[str] = []
+    index = 0
+
+    while index < len(text):
+        while index < len(text) and (text[index].isspace() or text[index] in separators):
+            index += 1
+        if index >= len(text):
+            break
+
+        matched = ""
+        for theme in candidates:
+            end = index + len(theme)
+            if text[index:end].casefold() != theme.casefold():
+                continue
+            boundary = end
+            while boundary < len(text) and text[boundary].isspace():
+                boundary += 1
+            if boundary < len(text) and text[boundary] not in separators:
+                continue
+            matched = theme
+            break
+
+        if matched:
+            if matched not in seen:
+                parsed.append(matched)
+                seen.add(matched)
+            index += len(matched)
+            continue
+
+        end = index
+        while end < len(text) and text[end] not in separators:
+            end += 1
+        raw = text[index:end].strip()
+        if raw and raw not in seen:
+            parsed.append(raw)
+            seen.add(raw)
+        index = end
+
+    return parsed
+
+
+def normalize_theme_list(value: str, allowed_themes: list[str] | None = None) -> str:
+    return "; ".join(parse_theme_values(value, allowed_themes=allowed_themes))
 
 
 def parse_materials() -> list[str]:
