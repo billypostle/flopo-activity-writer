@@ -21,6 +21,11 @@ def _mock_activity(content_fields):
             "Materials": "Foam balls; Number cards; Sorting bowls",
             "Step-by-Step Guidance": "Prepare sorting bowls and mixed-size foam balls. Invite children to sort by size and then match quantities with number cards.",
             "Adult Role": "Model counting language, observe first, and scaffold conflict resolution when needed.",
+            "Age Adaptation: 0-12 months (Little Learners)": "Use large soft balls only, keep the baby on a padded floor mat, and keep the adult within arm's reach throughout.",
+            "Age Adaptation: 12-24 months (Early Explorers)": "Offer two large foam balls and one basket, with the adult within arm's reach naming big and small during short repeated turns.",
+            "Age Adaptation: 2 years (Budding Adventurers)": "Use large non-fragmenting balls and simple matching language while the adult stays within one arm length to guide sharing.",
+            "Age Adaptation: 3 years (Curious Investigators)": "Invite children to compare two sizes at a low table, using child-safe materials and adult guidance within immediate proximity.",
+            "Age Adaptation: 4 years (Confident Discoverers)": "Add simple number cards and collaborative sorting while the adult remains beside the table to monitor small-object handling.",
             "Space Required": "Floor space or low table for small groups.",
             "Time Required": "15-25 minutes.",
             "Safety Considerations": "Supervise closely, keep foam balls large enough to avoid choking hazards, and monitor movement around shared baskets.",
@@ -77,6 +82,7 @@ def test_generate_validate_and_save_pipeline(monkeypatch, tmp_path):
     assert report.passed is True
     assert rewrites == 0
     assert qc_report.applied is True
+    assert draft["Linked materials"] == ""
     path, _ = save_markdown_to_activities(draft, fields, output_dir=tmp_path)
     assert path.exists()
 
@@ -133,6 +139,65 @@ def test_generate_includes_runtime_ethos_skill_docs(monkeypatch):
     assert qc_report.applied is True
     assert any("master ethos router" in prompt for prompt in captured_system_prompts)
     assert any("montessori runtime guidance" in prompt for prompt in captured_system_prompts)
+
+
+def test_generate_filters_unselected_age_adaptations_and_includes_safety_docs(monkeypatch):
+    fields = content_fields_from_csv()
+    mock_data = _mock_activity(fields)
+    monkeypatch.setattr(
+        "app.generator.load_model_spec_only",
+        lambda: {
+            "spec_version": "1.0.0",
+            "spec_text": "authoritative model spec",
+            "spec_hash": "abc",
+            "fetched_at": 1.0,
+            "source": "https://www.notion.so/spec",
+        },
+    )
+    monkeypatch.setattr("app.generator.load_runtime_ethos_skill_docs", lambda: {})
+    monkeypatch.setattr(
+        "app.generator.load_safety_skill_docs",
+        lambda doc_names: {name: "selected age safety rules" for name in doc_names},
+    )
+
+    captured_system_prompts: list[str] = []
+
+    def fake_openai_chat(messages, **kwargs):
+        stage = kwargs.get("stage_label", "")
+        if messages:
+            captured_system_prompts.append(str(messages[0].get("content", "")))
+        if stage == "qc editor":
+            return json.dumps(
+                {
+                    "pass": True,
+                    "spec_version": "1.0.0",
+                    "issues": [],
+                    "fields_to_edit": [],
+                    "revised_fields": {},
+                    "editor_notes": "No changes required.",
+                },
+                ensure_ascii=False,
+            )
+        return json.dumps(mock_data, ensure_ascii=False)
+
+    monkeypatch.setattr("app.generator._openai_chat", fake_openai_chat)
+
+    request = GenerateDraftRequest(
+        notes="Children explored a winter sensory setup with adults nearby.",
+        age_adaptations=["2-years"],
+    )
+    draft, report, rewrites, qc_report = generate_activity_draft(request, fields)
+
+    assert report.passed is True
+    assert rewrites == 0
+    assert qc_report.applied is True
+    assert draft["Age Adaptation: 2 years (Budding Adventurers)"]
+    assert draft["Age Adaptation: 0-12 months (Little Learners)"] == ""
+    assert draft["Age Adaptation: 12-24 months (Early Explorers)"] == ""
+    assert draft["Age Adaptation: 3 years (Curious Investigators)"] == ""
+    assert draft["Age Adaptation: 4 years (Confident Discoverers)"] == ""
+    assert any("Selected age adaptations for this generation" in prompt for prompt in captured_system_prompts)
+    assert any("selected age safety rules" in prompt for prompt in captured_system_prompts)
 
 
 def test_generate_endpoint_loads_runtime_ethos_skill_docs(monkeypatch):

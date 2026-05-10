@@ -7,13 +7,92 @@ from typing import Any, Callable
 
 import requests
 
-from .config import ALLOWED_EMPTY_FIELDS, MAX_REWRITE_ATTEMPTS, OPENAI_API_KEY, OPENAI_MODEL, OPENAI_QC_MODEL
+from .config import (
+    AGE_ADAPTATION_CHOICES,
+    AGE_ADAPTATION_FIELD_BY_ID,
+    AGE_ADAPTATION_FIELDS,
+    AGE_ADAPTATION_LABEL_BY_ID,
+    AGE_ADAPTATION_SAFETY_DOC_BY_ID,
+    ALLOWED_EMPTY_FIELDS,
+    MAX_REWRITE_ATTEMPTS,
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    OPENAI_QC_MODEL,
+)
 from .models import GenerateDraftRequest, QCReport, ValidationReport
-from .resources import load_model_spec_only, load_runtime_ethos_skill_docs, normalize_label, parse_themes
+from .resources import (
+    load_model_spec_only,
+    load_runtime_ethos_skill_docs,
+    load_safety_skill_docs,
+    normalize_label,
+    parse_themes,
+)
 from .validators import validate_draft
 
 OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 logger = logging.getLogger(__name__)
+DISABLED_OUTPUT_FIELDS = {"Linked materials"}
+
+
+def _selected_age_fields(selected_age_ids: list[str]) -> list[str]:
+    return [
+        normalize_label(AGE_ADAPTATION_FIELD_BY_ID[age_id])
+        for age_id in selected_age_ids
+        if age_id in AGE_ADAPTATION_FIELD_BY_ID
+    ]
+
+
+def _age_selection_prompt(selected_age_ids: list[str]) -> str:
+    selected_fields = set(_selected_age_fields(selected_age_ids))
+    selected_lines: list[str] = []
+    omitted_lines: list[str] = []
+    for choice in AGE_ADAPTATION_CHOICES:
+        field = normalize_label(choice["field"])
+        line = f"- {choice['label']} -> {field}"
+        if field in selected_fields:
+            selected_lines.append(line)
+        else:
+            omitted_lines.append(line)
+
+    return (
+        "Selected age adaptations for this generation:\n"
+        + "\n".join(selected_lines)
+        + "\n\nOnly write age adaptation content for the selected fields above. "
+        "Leave every unselected age adaptation field blank. Missing unselected age "
+        "adaptations are expected and must not be treated as a generation failure.\n\n"
+        "Unselected age adaptation fields to leave blank:\n"
+        + ("\n".join(omitted_lines) if omitted_lines else "- none")
+    )
+
+
+def _safety_docs_prompt(safety_docs: dict[str, str]) -> str:
+    sections: list[str] = []
+    for name, text in safety_docs.items():
+        clean = str(text or "").strip()
+        if clean:
+            sections.append(f"## {name}\n{clean}")
+    if not sections:
+        return ""
+    return (
+        "Selected age safety generation and validation docs. Apply the relevant "
+        "age-specific safety rules to the matching selected age adaptations and "
+        "overall Safety Considerations:\n"
+        + "\n\n".join(sections)
+    )
+
+
+def _apply_age_adaptation_policy(
+    draft: dict[str, str], selected_age_ids: list[str] | None
+) -> dict[str, str]:
+    if selected_age_ids is None:
+        return dict(draft)
+    selected = set(_selected_age_fields(selected_age_ids))
+    output = dict(draft)
+    for field in AGE_ADAPTATION_FIELDS:
+        normalized = normalize_label(field)
+        if normalized not in selected and normalized in output:
+            output[normalized] = ""
+    return output
 
 
 def _extract_json(content: str) -> dict[str, Any]:
@@ -136,6 +215,14 @@ def _field_schema_prompt(content_fields: list[str]) -> str:
     return json.dumps(structure, indent=2)
 
 
+def _apply_output_field_policy(draft: dict[str, str]) -> dict[str, str]:
+    output = dict(draft)
+    for field in DISABLED_OUTPUT_FIELDS:
+        if field in output:
+            output[field] = ""
+    return output
+
+
 def _estimate_tokens(messages: list[dict[str, Any]]) -> int:
     total_chars = 0
     for message in messages:
@@ -173,6 +260,8 @@ def _system_prompt(
     model_spec: dict[str, Any],
     content_fields: list[str],
     ethos_skill_docs: dict[str, str],
+    selected_age_ids: list[str],
+    safety_docs: dict[str, str],
 ) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
     spec_text = str(model_spec.get("spec_text", "")).strip()
@@ -182,6 +271,9 @@ def _system_prompt(
     ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
     themes_text = _approved_themes_prompt()
     themes_section = f"\n\n{themes_text}" if themes_text else ""
+    safety_text = _safety_docs_prompt(safety_docs)
+    safety_section = f"\n\n{safety_text}" if safety_text else ""
+    age_section = f"\n\n{_age_selection_prompt(selected_age_ids)}"
     return (
         "You are a specialist FloPo activity writer. "
         "Generate content that strictly follows the Model Spec. "
@@ -191,6 +283,8 @@ def _system_prompt(
         "- Keep plain text only (no HTML).\n"
         "- Keep the exact field names.\n"
         "- Do not leave required fields blank except optional age adaptation fields.\n"
+        "- Write age adaptation fields only for the selected age adaptations.\n"
+        "- Leave all unselected age adaptation fields blank.\n"
         "- Title must be long-tail sentence case and descriptive.\n"
         "- Summary should be 2-5 sentences and primarily non-procedural.\n"
         "- Preview content must be useful but intentionally incomplete.\n"
@@ -200,12 +294,15 @@ def _system_prompt(
         "- Preview content must include explicit actors (children and/or adults) doing something.\n"
         "- Preview content should include concrete child/adult/material details.\n"
         "- Themes must be separated with semicolons (`Theme; Theme`), never commas.\n"
-        "- Ethos adaptations must be concrete and deep.\n\n"
+        "- Ethos adaptations must be concrete and deep.\n"
+        "- Leave Linked materials blank; use Materials for now.\n\n"
         "Conflict resolution policy:\n"
         "- If any other instruction conflicts, the Model Spec wins.\n\n"
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{age_section}"
+        f"{safety_section}"
         f"{themes_section}"
         f"{ethos_section}"
     )
@@ -213,11 +310,19 @@ def _system_prompt(
 
 def _user_prompt(request: GenerateDraftRequest, model_spec: dict[str, Any]) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
+    selected_labels = [
+        AGE_ADAPTATION_LABEL_BY_ID[age_id]
+        for age_id in request.age_adaptations
+        if age_id in AGE_ADAPTATION_LABEL_BY_ID
+    ]
     return (
         f"spec_version: {spec_version}\n\n"
+        "Selected age adaptations:\n"
+        + "\n".join(f"- {label}" for label in selected_labels)
+        + "\n\n"
         "Source notes:\n"
         f"{request.notes}\n\n"
-        "Use only the notes, Model Spec and approved Webflow CMS theme list to infer all content fields, including themes, age adaptations, materials, and contextual framing."
+        "Use only the notes, Model Spec, selected age adaptations, selected age safety docs and approved Webflow CMS theme list to infer all content fields, including themes, materials, safety and contextual framing."
     )
 
 
@@ -227,6 +332,8 @@ def _rewrite_prompt(
     content_fields: list[str],
     model_spec: dict[str, Any],
     ethos_skill_docs: dict[str, str],
+    selected_age_ids: list[str],
+    safety_docs: dict[str, str],
 ) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
     spec_text = str(model_spec.get("spec_text", "")).strip()
@@ -234,6 +341,9 @@ def _rewrite_prompt(
     ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
     themes_text = _approved_themes_prompt()
     themes_section = f"\n\n{themes_text}" if themes_text else ""
+    safety_text = _safety_docs_prompt(safety_docs)
+    safety_section = f"\n\n{safety_text}" if safety_text else ""
+    age_section = f"\n\n{_age_selection_prompt(selected_age_ids)}"
     return (
         "Rewrite the activity JSON to resolve only the blocking issues below while preserving all fields.\n"
         f"Issues:\n- " + "\n- ".join(issues) + "\n\n"
@@ -243,11 +353,16 @@ def _rewrite_prompt(
         "- For Preview content, write an in-activity snippet only; no meta wording about previews/excerpts.\n"
         "- For Themes, use only exact approved Webflow CMS theme names.\n"
         "- For Themes, separate multiple values with semicolons (`Theme; Theme`), never commas.\n"
+        "- Preserve blank values for unselected age adaptation fields.\n"
+        "- Do not add content to unselected age adaptation fields.\n"
         "- Keep Preview content useful but incomplete without describing what is withheld/revealed/disclosed.\n"
-        "- Include explicit scene actors (children/adults) and concrete materials/actions.\n\n"
+        "- Include explicit scene actors (children/adults) and concrete materials/actions.\n"
+        "- Leave Linked materials blank; use Materials for now.\n\n"
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{age_section}"
+        f"{safety_section}"
         f"{themes_section}"
         f"{ethos_section}\n\n"
         "Return strict JSON only with exactly these keys:\n"
@@ -261,6 +376,8 @@ def _qc_system_prompt(
     model_spec: dict[str, Any],
     content_fields: list[str],
     ethos_skill_docs: dict[str, str],
+    selected_age_ids: list[str],
+    safety_docs: dict[str, str],
 ) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
     spec_text = str(model_spec.get("spec_text", "")).strip()
@@ -268,6 +385,9 @@ def _qc_system_prompt(
     ethos_section = f"\n\n{ethos_docs_text}" if ethos_docs_text else ""
     themes_text = _approved_themes_prompt()
     themes_section = f"\n\n{themes_text}" if themes_text else ""
+    safety_text = _safety_docs_prompt(safety_docs)
+    safety_section = f"\n\n{safety_text}" if safety_text else ""
+    age_section = f"\n\n{_age_selection_prompt(selected_age_ids)}"
     return (
         "You are FloPo QC Editor, a strict validating editor. "
         "Your task is to review the provided draft against the Model Spec and output only targeted fixes.\n\n"
@@ -278,6 +398,8 @@ def _qc_system_prompt(
         "- Preserve field names exactly.\n"
         "- Keep plain text only. No HTML.\n"
         "- Keep child/adult realism, concrete context, and age-aware safety detail.\n"
+        "- Missing unselected age adaptations are expected; do not flag them.\n"
+        "- Keep unselected age adaptation fields blank.\n"
         "- Themes must use only exact approved Webflow CMS theme names.\n"
         "- Themes must separate multiple values with semicolons (`Theme; Theme`), never commas.\n"
         "- Do not introduce meta commentary about preview in Preview content.\n"
@@ -286,7 +408,7 @@ def _qc_system_prompt(
         "Return strict JSON only with this exact shape:\n"
         "{\n"
         '  "pass": boolean,\n'
-        '  "spec_version": "1.0.0",\n'
+        f'  "spec_version": "{spec_version}",\n'
         '  "issues": [\n'
         "    {\n"
         '      "severity": "blocker|major|minor",\n'
@@ -303,6 +425,8 @@ def _qc_system_prompt(
         f"spec_version: {spec_version}\n\n"
         "Model Spec (authoritative ruleset):\n"
         f"{spec_text}"
+        f"{age_section}"
+        f"{safety_section}"
         f"{themes_section}"
         f"{ethos_section}\n\n"
         "Allowed fields:\n"
@@ -310,15 +434,29 @@ def _qc_system_prompt(
     )
 
 
-def _qc_user_prompt(draft: dict[str, str], content_fields: list[str], model_spec: dict[str, Any]) -> str:
+def _qc_user_prompt(
+    draft: dict[str, str],
+    content_fields: list[str],
+    model_spec: dict[str, Any],
+    selected_age_ids: list[str],
+) -> str:
     spec_version = str(model_spec.get("spec_version", "")).strip()
+    selected_labels = [
+        AGE_ADAPTATION_LABEL_BY_ID[age_id]
+        for age_id in selected_age_ids
+        if age_id in AGE_ADAPTATION_LABEL_BY_ID
+    ]
     return (
         f"spec_version: {spec_version}\n\n"
+        "Selected age adaptations:\n"
+        + "\n".join(f"- {label}" for label in selected_labels)
+        + "\n\n"
         "Allowed fields:\n"
         f"{json.dumps(content_fields, ensure_ascii=False)}\n\n"
         "Current draft JSON:\n"
         f"{json.dumps(draft, ensure_ascii=False)}\n\n"
         "Evaluate this draft against the Model Spec.\n"
+        "The response spec_version must exactly match the provided spec_version.\n"
         "If acceptable, set pass=true and return empty fields_to_edit/revised_fields.\n"
         "If not acceptable, list issues and provide corrected text only for failing fields."
     )
@@ -333,7 +471,7 @@ def _normalize_field_keys(draft: dict[str, Any], content_fields: list[str]) -> d
     for field in content_fields:
         f = normalize_label(field)
         output[f] = draft_norm.get(f, "")
-    return output
+    return _apply_output_field_policy(output)
 
 
 def _run_qc_editor_pass(
@@ -342,14 +480,20 @@ def _run_qc_editor_pass(
     ethos_skill_docs: dict[str, str],
     content_fields: list[str],
     pre_qc_report: ValidationReport,
+    selected_age_ids: list[str] | None = None,
+    safety_docs: dict[str, str] | None = None,
     on_status: Callable[[str], None] | None = None,
 ) -> tuple[dict[str, str], QCReport]:
     def update_status(message: str) -> None:
         if on_status:
             on_status(message)
 
-    qc_system = _qc_system_prompt(model_spec, content_fields, ethos_skill_docs)
-    qc_user = _qc_user_prompt(draft, content_fields, model_spec)
+    safety_docs = safety_docs or {}
+    prompt_age_ids = selected_age_ids or []
+    qc_system = _qc_system_prompt(
+        model_spec, content_fields, ethos_skill_docs, prompt_age_ids, safety_docs
+    )
+    qc_user = _qc_user_prompt(draft, content_fields, model_spec, prompt_age_ids)
     logger.info(
         "Estimated prompt tokens (qc editor): %s",
         _estimate_tokens(
@@ -443,6 +587,9 @@ def _run_qc_editor_pass(
         field = normalize_label(str(key))
         if field in allowed and isinstance(value, str):
             revised_fields[field] = value
+    revised_fields = _apply_age_adaptation_policy(
+        _apply_output_field_policy(revised_fields), selected_age_ids
+    )
 
     editable = [field for field in content_fields if field in fields_to_edit]
     edited_fields: list[str] = []
@@ -456,11 +603,12 @@ def _run_qc_editor_pass(
         if merged.get(field, "") != next_value:
             merged[field] = next_value
             edited_fields.append(field)
+    merged = _apply_age_adaptation_policy(_apply_output_field_policy(merged), selected_age_ids)
 
     if set(revised_fields.keys()) - fields_to_edit:
         issues.append("QC response included revised_fields outside fields_to_edit; ignored extras.")
 
-    merged_report = validate_draft(merged, content_fields)
+    merged_report = validate_draft(merged, content_fields, selected_age_adaptations=selected_age_ids)
     if len(merged_report.blocking_issues) > len(pre_qc_report.blocking_issues):
         issues.append("QC edits were discarded because they increased blocking issues.")
         return draft, QCReport(
@@ -494,11 +642,22 @@ def generate_activity_draft(
     update_status(f"Model spec ready (v{model_spec.get('spec_version', '')})")
     update_status("Loading runtime ethos skill docs")
     ethos_skill_docs = load_runtime_ethos_skill_docs()
+    selected_age_ids = list(request.age_adaptations)
+    update_status("Loading selected age safety docs")
+    safety_docs = load_safety_skill_docs(
+        [
+            AGE_ADAPTATION_SAFETY_DOC_BY_ID[age_id]
+            for age_id in selected_age_ids
+            if age_id in AGE_ADAPTATION_SAFETY_DOC_BY_ID
+        ]
+    )
     update_status("Preparing content fields")
     content_fields = [normalize_label(f) for f in content_fields]
 
     update_status("Building prompts")
-    system_prompt = _system_prompt(model_spec, content_fields, ethos_skill_docs)
+    system_prompt = _system_prompt(
+        model_spec, content_fields, ethos_skill_docs, selected_age_ids, safety_docs
+    )
     user_prompt = _user_prompt(request, model_spec)
     initial_messages = [
         {"role": "system", "content": system_prompt},
@@ -512,16 +671,24 @@ def generate_activity_draft(
     update_status("Generating initial draft with OpenAI")
     raw = _openai_chat(initial_messages, on_status=update_status, stage_label="initial draft")
     update_status("Parsing draft response")
-    draft = _normalize_field_keys(_extract_json(raw), content_fields)
+    draft = _apply_age_adaptation_policy(
+        _normalize_field_keys(_extract_json(raw), content_fields), selected_age_ids
+    )
     update_status("Validating initial draft")
-    report = validate_draft(draft, content_fields)
+    report = validate_draft(draft, content_fields, selected_age_adaptations=selected_age_ids)
 
     rewrite_count = 0
     while not report.passed and rewrite_count < MAX_REWRITE_ATTEMPTS:
         rewrite_count += 1
         update_status(f"Rewriting draft (attempt {rewrite_count}/{MAX_REWRITE_ATTEMPTS})")
         rewrite_user = _rewrite_prompt(
-            draft, report.blocking_issues, content_fields, model_spec, ethos_skill_docs
+            draft,
+            report.blocking_issues,
+            content_fields,
+            model_spec,
+            ethos_skill_docs,
+            selected_age_ids,
+            safety_docs,
         )
         rewrite_messages = [
             {"role": "system", "content": system_prompt},
@@ -537,9 +704,12 @@ def generate_activity_draft(
             on_status=update_status,
             stage_label=f"rewrite {rewrite_count}",
         )
-        draft = _normalize_field_keys(_extract_json(rewritten_raw), content_fields)
+        draft = _apply_age_adaptation_policy(
+            _normalize_field_keys(_extract_json(rewritten_raw), content_fields),
+            selected_age_ids,
+        )
         update_status(f"Validating rewrite attempt {rewrite_count}")
-        report = validate_draft(draft, content_fields)
+        report = validate_draft(draft, content_fields, selected_age_adaptations=selected_age_ids)
 
     update_status("Running QC editor pass")
     draft, qc_report = _run_qc_editor_pass(
@@ -548,6 +718,8 @@ def generate_activity_draft(
         ethos_skill_docs,
         content_fields,
         report,
+        selected_age_ids=selected_age_ids,
+        safety_docs=safety_docs,
         on_status=update_status,
     )
     if qc_report.applied:
@@ -555,6 +727,6 @@ def generate_activity_draft(
     else:
         update_status("QC skipped/fail-open")
 
-    report = validate_draft(draft, content_fields)
+    report = validate_draft(draft, content_fields, selected_age_adaptations=selected_age_ids)
     update_status("Finalizing generation result")
     return draft, report, rewrite_count, qc_report

@@ -31,7 +31,7 @@ Each Montessori adaptation must:
 
 - Be written as **two short paragraphs**
 - Follow the Three I’s implicitly (Intent → Implementation → Impact)
-- Contain **at least three distinct adult decisions**
+- Contain **at least two distinct adult decisions**
 - Be skippable without breaking the main activity
 
 ### Paragraph 1: Environment and Materials
@@ -228,4 +228,3 @@ If the adaptation does not materially change:
 - what is being observed
 
 it should not be generated.
-

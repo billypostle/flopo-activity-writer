@@ -136,7 +136,7 @@ Practical, in-the-moment guidance to help practitioners notice meaningful develo
 
 # **Linked Materials**
 
-Preferred over generic material lists. Reference [[Materials list]] wherever possible. Use consistent naming conventions.
+Phase 1: leave this section blank. Use `Materials` instead until linked-material support is enabled.
 
 ### Materials must be:
 
@@ -145,7 +145,7 @@ Preferred over generic material lists. Reference [[Materials list]] wherever pos
 - Age-appropriate
 - Specific (no vague categories such as "various items")
 
-Only use a standard materials list if no linked material exists.
+Only use a standard materials list for now.
 
 ---
 

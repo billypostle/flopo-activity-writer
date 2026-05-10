@@ -28,6 +28,11 @@
     label { display:block; margin: 10px 0 6px; font-weight: 600; }
     textarea, input { width: 100%; box-sizing: border-box; border: var(--border); border-radius: 10px; padding: 10px; font: inherit; background:#fff; }
     textarea { min-height: 220px; }
+    fieldset { border: var(--border); border-radius: 10px; padding: 12px 14px; margin: 14px 0 0; background: #fffaf2; }
+    legend { font-weight: 600; padding: 0 6px; }
+    .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 14px; margin-top: 8px; }
+    .checkbox-option { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-weight: 400; line-height: 1.25; }
+    .checkbox-option input { width: auto; margin-top: 3px; }
     .btns { display:flex; gap:10px; margin-top:16px; flex-wrap: wrap; }
     .button, button { display: flex; flex-direction: row; justify-content: center; align-items: center; padding: 10px 24px; gap: 8px; border: var(--border); box-shadow: 0px 2px 2px rgba(13, 11, 5, 0.15), inset 0px 4px 0px rgba(255, 255, 255, 0.2), inset 0px -5px 0px rgba(13, 11, 5, 0.15); border-radius: 12px; cursor:pointer; font: inherit; font-weight: 600; }
     .primary { background: #D2FFFF; color:#203427; }
@@ -66,6 +71,17 @@
       <p class="muted">Paste notes, generate a validated draft, then push to Notion and/or Webflow as a draft.</p>
       <label for="notes">Notes</label>
       <textarea id="notes" placeholder="Write notes here..."></textarea>
+      <fieldset>
+        <legend>Age adaptations</legend>
+        <div class="muted">Select the only age adaptations to generate for this activity.</div>
+        <div class="checkbox-grid">
+          <label class="checkbox-option"><input type="checkbox" name="ageAdaptation" value="0-12-months" checked>0-12 months (Little Learners)</label>
+          <label class="checkbox-option"><input type="checkbox" name="ageAdaptation" value="12-24-months" checked>12-24 months (Early Explorers)</label>
+          <label class="checkbox-option"><input type="checkbox" name="ageAdaptation" value="2-years" checked>2 years (Budding Adventurers)</label>
+          <label class="checkbox-option"><input type="checkbox" name="ageAdaptation" value="3-years" checked>3 years (Curious Investigators)</label>
+          <label class="checkbox-option"><input type="checkbox" name="ageAdaptation" value="4-years" checked>4 years (Confident Discoverers)</label>
+        </div>
+      </fieldset>
       <div class="btns">
         <button class="primary" id="generateBtn">Generate</button>
         <button class="secondary" id="notionBtn">Push To Notion</button>
@@ -328,6 +344,11 @@
       return [trimmed];
     }
 
+    function selectedAgeAdaptations() {
+      return Array.from(document.querySelectorAll('input[name="ageAdaptation"]:checked'))
+        .map((input) => input.value);
+    }
+
     function buildGenerationReportItems(data) {
       const validation = data.validation_report || {};
       const blockingIssues = normalizeIssueList(validation.blocking_issues);
@@ -383,10 +404,21 @@
 
     byId("generateBtn").addEventListener("click", async () => {
       clearReport();
+      const ageAdaptations = selectedAgeAdaptations();
+      if (!ageAdaptations.length) {
+        byId("status").textContent = "Select at least one age adaptation before generating.";
+        renderReport([{
+          title: "Age Adaptation Required",
+          body: "Choose one or more age groups for this generation.",
+          issues: ["At least one age adaptation checkbox must be selected."]
+        }]);
+        return;
+      }
       const stopTicker = startGenerationTicker();
       try {
         const payload = {
-          notes: byId("notes").value
+          notes: byId("notes").value,
+          age_adaptations: ageAdaptations
         };
         const data = await callApi("/api/generate-draft", payload);
         stopTicker();

@@ -3,7 +3,13 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-from .config import ALLOWED_EMPTY_FIELDS, BANNED_PHRASES, REQUIRED_ETHOS_FIELDS
+from .config import (
+    AGE_ADAPTATION_FIELD_BY_ID,
+    AGE_ADAPTATION_FIELDS,
+    ALLOWED_EMPTY_FIELDS,
+    BANNED_PHRASES,
+    REQUIRED_ETHOS_FIELDS,
+)
 from .models import ValidationReport
 from .resources import normalize_label, parse_theme_values, parse_themes
 
@@ -64,6 +70,33 @@ def validate_section_completeness(
             continue
         if not _non_empty(draft.get(field, "")):
             issues.append(f"Missing required field content: {field}")
+    return issues
+
+
+def validate_age_adaptation_selection(
+    draft: dict[str, str], selected_age_adaptations: Iterable[str] | None
+) -> list[str]:
+    if selected_age_adaptations is None:
+        return []
+
+    selected_ids = list(selected_age_adaptations)
+    selected_fields = {
+        normalize_label(AGE_ADAPTATION_FIELD_BY_ID[age_id])
+        for age_id in selected_ids
+        if age_id in AGE_ADAPTATION_FIELD_BY_ID
+    }
+    if not selected_fields:
+        return ["At least one age adaptation must be selected for generation."]
+
+    issues = []
+    for field in AGE_ADAPTATION_FIELDS:
+        normalized = normalize_label(field)
+        if normalized in selected_fields:
+            if not _non_empty(draft.get(normalized, "")):
+                issues.append(f"Selected age adaptation is missing: {normalized}")
+            continue
+        if _non_empty(draft.get(normalized, "")):
+            issues.append(f"Unselected age adaptation must be blank: {normalized}")
     return issues
 
 
@@ -227,7 +260,7 @@ def _ethos_has_three_decisions(text: str) -> bool:
     ]
     lower = text.lower()
     count = sum(1 for v in verbs if v in lower)
-    return count >= 3
+    return count >= 2
 
 
 def validate_ethos_depth(draft: dict[str, str]) -> list[str]:
@@ -237,10 +270,10 @@ def validate_ethos_depth(draft: dict[str, str]) -> list[str]:
         if not _non_empty(value):
             issues.append(f"{field} is required.")
             continue
-        if _sentence_count(value) < 3:
+        if _sentence_count(value) < 2:
             issues.append(f"{field} is too shallow; provide fuller adaptation detail.")
         if not _ethos_has_three_decisions(value):
-            issues.append(f"{field} must include at least three distinct adult decisions.")
+            issues.append(f"{field} must include at least two distinct adult decisions.")
 
     reggio = draft.get("Ethos Adaptation: Reggio Emilia", "").lower()
     reggio_env_terms = ["environment", "space", "layout", "display", "materials", "studio"]
@@ -290,7 +323,11 @@ def validate_style(draft: dict[str, str], expected_fields: Iterable[str]) -> lis
     return issues
 
 
-def validate_draft(draft: dict[str, str], expected_fields: Iterable[str]) -> ValidationReport:
+def validate_draft(
+    draft: dict[str, str],
+    expected_fields: Iterable[str],
+    selected_age_adaptations: Iterable[str] | None = None,
+) -> ValidationReport:
     fields = [normalize_label(f) for f in expected_fields]
     normalized_draft = {normalize_label(k): v for k, v in draft.items()}
 
@@ -300,6 +337,9 @@ def validate_draft(draft: dict[str, str], expected_fields: Iterable[str]) -> Val
     blocking_issues.extend(validate_title(normalized_draft.get("Activity Title", "")))
     blocking_issues.extend(validate_section_completeness(normalized_draft, fields))
     blocking_issues.extend(validate_section_order(draft, fields))
+    blocking_issues.extend(
+        validate_age_adaptation_selection(normalized_draft, selected_age_adaptations)
+    )
     blocking_issues.extend(validate_themes(normalized_draft))
     blocking_issues.extend(validate_summary_and_preview(normalized_draft))
     blocking_issues.extend(validate_preview_quality(normalized_draft))

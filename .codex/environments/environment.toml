@@ -1,0 +1,25 @@
+version = 1
+name = "FloPo Activity Writer"
+
+[setup]
+script = ""
+
+[[actions]]
+name = "Run"
+icon = "run"
+command = "powershell -ExecutionPolicy Bypass -File ./script/codex_action.ps1 run"
+
+[[actions]]
+name = "Test"
+icon = "tool"
+command = "powershell -ExecutionPolicy Bypass -File ./script/codex_action.ps1 test"
+
+[[actions]]
+name = "Publish Prod"
+icon = "upload"
+command = "powershell -ExecutionPolicy Bypass -File ./script/codex_action.ps1 publish-prod"
+
+[[actions]]
+name = "Vercel Status"
+icon = "tool"
+command = "powershell -ExecutionPolicy Bypass -File ./script/codex_action.ps1 vercel-status"

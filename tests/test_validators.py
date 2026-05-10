@@ -123,3 +123,49 @@ def test_unknown_themes_are_blocking():
     assert report.passed is False
     assert any("webflow cms themes" in issue.lower() for issue in report.blocking_issues)
     assert any("Sensory Play" in issue for issue in report.blocking_issues)
+
+
+def test_ethos_depth_allows_two_clear_adult_decisions():
+    draft = _base_draft()
+    draft["Ethos Adaptation: Montessori"] = (
+        "Prepare a calm, ordered tray with limited materials and clear boundaries. "
+        "The adult observes concentration and responds by preserving uninterrupted work cycles."
+    )
+    fields = list(draft.keys())
+    report = validate_draft(draft, fields)
+
+    assert not any("montessori" in issue.lower() for issue in report.blocking_issues)
+
+
+def test_selected_age_adaptations_require_only_selected_fields():
+    draft = _base_draft()
+    fields = list(draft.keys())
+    draft["Age Adaptation: 0-12 months (Little Learners)"] = ""
+    draft["Age Adaptation: 3 years (Curious Investigators)"] = ""
+    draft["Age Adaptation: 4 years (Confident Discoverers)"] = ""
+
+    report = validate_draft(draft, fields, selected_age_adaptations=["12-24-months", "2-years"])
+
+    assert report.passed is True
+    assert report.blocking_issues == []
+
+
+def test_unselected_age_adaptation_content_is_blocking_when_selection_is_known():
+    draft = _base_draft()
+    fields = list(draft.keys())
+
+    report = validate_draft(draft, fields, selected_age_adaptations=["12-24-months"])
+
+    assert report.passed is False
+    assert any("unselected age adaptation" in issue.lower() for issue in report.blocking_issues)
+
+
+def test_selected_age_adaptation_missing_is_blocking():
+    draft = _base_draft()
+    fields = list(draft.keys())
+    draft["Age Adaptation: 12-24 months (Early Explorers)"] = ""
+
+    report = validate_draft(draft, fields, selected_age_adaptations=["12-24-months"])
+
+    assert report.passed is False
+    assert any("selected age adaptation is missing" in issue.lower() for issue in report.blocking_issues)

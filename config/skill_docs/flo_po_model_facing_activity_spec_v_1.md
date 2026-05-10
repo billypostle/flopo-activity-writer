@@ -137,6 +137,8 @@ No deviations.
 
 ## Linked Materials / Materials
 
+Phase 1 rule: leave `Linked materials` blank and use `Materials` only.
+
 - Specific and realistic
 - Safety-aware
 - Age-appropriate
@@ -205,7 +207,7 @@ Include only:
 
 Each adaptation MUST:
 
-- Describe at least three distinct adult decisions
+- Describe at least two distinct adult decisions
 - Include a concrete environmental/material change
 - Include a shift in adult behaviour or language
 - Describe what the adult observes and responds to

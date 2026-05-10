@@ -11,11 +11,13 @@ from typing import Any
 
 from .config import (
     ACTIVITIES_CSV_PATH,
+    AGE_ADAPTATION_CHOICES,
     CSV_INTERNAL_COLUMNS,
     ETHOS_MASTER_DOC,
     INCLUDED_SKILL_DOCS,
     LOCAL_MODEL_SPEC_DOC,
     NOTION_SKILL_DOCS_CONFIG_PATH,
+    SAFETY_SKILL_DOCS_DIR,
     SKILL_DOCS_DIR,
     THEMES_CSV_PATH,
 )
@@ -23,6 +25,12 @@ from .config import (
 
 def normalize_label(value: str) -> str:
     replacements = {
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2212": "-",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
         "–": "-",
         "—": "-",
         "â€“": "-",
@@ -151,6 +159,14 @@ def load_runtime_ethos_skill_docs() -> dict[str, str]:
         output[target_path.stem] = target_text
 
     return output
+
+
+def load_safety_skill_docs(doc_names: list[str]) -> dict[str, str]:
+    docs: dict[str, str] = {}
+    for filename in doc_names:
+        path = SAFETY_SKILL_DOCS_DIR / filename
+        docs[filename] = read_text(path) if path.exists() else ""
+    return docs
 
 
 def load_model_spec_only() -> dict[str, Any]:
@@ -301,5 +317,6 @@ def load_resources_payload() -> dict[str, Any]:
         "themes": parse_themes(),
         "materials": parse_materials(),
         "age_bands": parse_age_bands(),
+        "age_adaptation_choices": AGE_ADAPTATION_CHOICES,
         "eyfs_areas": parse_eyfs_areas(),
     }

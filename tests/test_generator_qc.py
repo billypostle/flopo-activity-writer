@@ -185,3 +185,67 @@ def test_qc_edits_discarded_when_validation_gets_worse(monkeypatch):
     assert qc_report.applied is True
     assert qc_report.passed is False
     assert any("discarded" in issue.lower() for issue in qc_report.issues)
+
+
+def test_qc_spec_version_uses_runtime_spec_value(monkeypatch):
+    draft = _base_draft()
+    fields = list(draft.keys())
+    report = validate_draft(draft, fields)
+
+    monkeypatch.setattr(
+        "app.generator._openai_chat",
+        lambda *_args, **_kwargs: json.dumps(
+            {
+                "pass": True,
+                "spec_version": "9368033847f7",
+                "issues": [],
+                "fields_to_edit": [],
+                "revised_fields": {},
+                "editor_notes": "No changes required.",
+            }
+        ),
+    )
+
+    updated, qc_report = _run_qc_editor_pass(
+        draft, {"spec_version": "9368033847f7", "spec_text": "x"}, {}, fields, report
+    )
+
+    assert updated == draft
+    assert qc_report.applied is True
+    assert qc_report.passed is True
+    assert not any("spec_version mismatch" in issue for issue in qc_report.issues)
+
+
+def test_qc_forces_linked_materials_blank(monkeypatch):
+    draft = _base_draft()
+    fields = list(draft.keys())
+    report = validate_draft(draft, fields)
+
+    monkeypatch.setattr(
+        "app.generator._openai_chat",
+        lambda *_args, **_kwargs: json.dumps(
+            {
+                "pass": False,
+                "spec_version": "1.0.0",
+                "issues": [
+                    {
+                        "severity": "minor",
+                        "section": "Linked materials",
+                        "rule": "Leave blank",
+                        "evidence": "phase 2 field populated",
+                        "fix": "Clear the field",
+                    }
+                ],
+                "fields_to_edit": ["Linked materials"],
+                "revised_fields": {"Linked materials": "Some linked items"},
+                "editor_notes": "Attempted linked materials edit.",
+            }
+        ),
+    )
+
+    updated, qc_report = _run_qc_editor_pass(
+        draft, {"spec_version": "1.0.0", "spec_text": "x"}, {}, fields, report
+    )
+
+    assert updated["Linked materials"] == ""
+    assert qc_report.applied is True

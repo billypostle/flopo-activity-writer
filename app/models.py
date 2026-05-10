@@ -2,11 +2,27 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from .config import AGE_ADAPTATION_IDS
 
 
 class GenerateDraftRequest(BaseModel):
     notes: str = Field(min_length=10)
+    age_adaptations: list[str] = Field(default_factory=lambda: list(AGE_ADAPTATION_IDS))
+
+    @field_validator("age_adaptations")
+    @classmethod
+    def validate_age_adaptations(cls, value: list[str]) -> list[str]:
+        deduped = []
+        for item in value:
+            if item not in AGE_ADAPTATION_IDS:
+                raise ValueError(f"Unknown age adaptation: {item}")
+            if item not in deduped:
+                deduped.append(item)
+        if not deduped:
+            raise ValueError("Select at least one age adaptation.")
+        return deduped
 
 
 class ValidationReport(BaseModel):

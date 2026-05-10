@@ -250,7 +250,7 @@ Adaptations are written as short paragraphs, not bullet points.
 
 ## Ethos Adaptations: Depth Requirement
 
-**Each ethos adaptation must describe at least three distinct adult decisions.**
+**Each ethos adaptation must describe at least two distinct adult decisions.**
 
 ### These decisions must cover:
 

@@ -69,6 +69,7 @@ def _resolve_skill_docs_dir(repo_root: Path) -> Path:
 
 SKILL_DOCS_DIR = _resolve_skill_docs_dir(REPO_ROOT)
 ETHOS_SKILL_DOCS_DIR = SKILL_DOCS_DIR / "Ethos Skills"
+SAFETY_SKILL_DOCS_DIR = SKILL_DOCS_DIR / "Safety"
 DATABASES_DIR = REPO_ROOT / "Databases"
 ACTIVITIES_OUTPUT_DIR = REPO_ROOT / "Activities"
 
@@ -209,6 +210,51 @@ ALLOWED_EMPTY_FIELDS = {
     "Age Adaptation: 3 years (Curious Investigators)",
     "Age Adaptation: 4 years (Confident Discoverers)",
     "Linked materials",
+}
+
+AGE_ADAPTATION_CHOICES = [
+    {
+        "id": "0-12-months",
+        "label": "0-12 months (Little Learners)",
+        "field": "Age Adaptation: 0-12 months (Little Learners)",
+        "safety_doc": "Safety Generation & Validation Guide (0-12 Months).md",
+    },
+    {
+        "id": "12-24-months",
+        "label": "12-24 months (Early Explorers)",
+        "field": "Age Adaptation: 12-24 months (Early Explorers)",
+        "safety_doc": "Safety Generation & Validation Guide (12–24 Months).md",
+    },
+    {
+        "id": "2-years",
+        "label": "2 years (Budding Adventurers)",
+        "field": "Age Adaptation: 2 years (Budding Adventurers)",
+        "safety_doc": "Safety Generation & Validation Guide (2 year olds).md",
+    },
+    {
+        "id": "3-years",
+        "label": "3 years (Curious Investigators)",
+        "field": "Age Adaptation: 3 years (Curious Investigators)",
+        "safety_doc": "Safety Generation & Validation Guide (3 year olds).md",
+    },
+    {
+        "id": "4-years",
+        "label": "4 years (Confident Discoverers)",
+        "field": "Age Adaptation: 4 years (Confident Discoverers)",
+        "safety_doc": "Safety Generation & Validation Guide (4 year olds).md",
+    },
+]
+
+AGE_ADAPTATION_IDS = [choice["id"] for choice in AGE_ADAPTATION_CHOICES]
+AGE_ADAPTATION_FIELDS = [choice["field"] for choice in AGE_ADAPTATION_CHOICES]
+AGE_ADAPTATION_FIELD_BY_ID = {
+    choice["id"]: choice["field"] for choice in AGE_ADAPTATION_CHOICES
+}
+AGE_ADAPTATION_LABEL_BY_ID = {
+    choice["id"]: choice["label"] for choice in AGE_ADAPTATION_CHOICES
+}
+AGE_ADAPTATION_SAFETY_DOC_BY_ID = {
+    choice["id"]: choice["safety_doc"] for choice in AGE_ADAPTATION_CHOICES
 }
 
 BANNED_PHRASES = [

@@ -76,10 +76,14 @@ Web-based app for generating FloPo activity drafts with OpenAI, validating again
 4. Deploy and note your `*.vercel.app` URL.
 5. Embed that URL in your Webflow password-protected page via iframe.
 
-## Production publish action
-- In the Codex toolbar, run `Publish_FloPo_Activity_Writer_To_Vercel_Prod.bat`.
-- The action changes into `Tools/Activity_Writer`, runs `python -m pytest`, and only deploys if tests pass.
-- It publishes the linked Vercel project with `vercel deploy --prod`.
+## Codex actions
+- Codex action wiring lives in `.codex/environments/environment.toml`.
+- The project-local action entrypoint is `script/codex_action.ps1`.
+- Available toolbar actions:
+  - `Run`: starts `uvicorn app.main:app --reload`
+  - `Test`: runs `python -m pytest`
+  - `Publish Prod`: runs tests and only then executes `vercel deploy --prod`
+  - `Vercel Status`: prints the linked `.vercel/project.json`
 - Vercel authentication must already be available through `vercel login` or `VERCEL_TOKEN`.
 
 ## Notion integration setup
